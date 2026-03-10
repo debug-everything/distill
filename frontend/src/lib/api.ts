@@ -45,6 +45,32 @@ export function captureUrl(data: CaptureRequest): Promise<CaptureResponse> {
   });
 }
 
+// Batch capture
+export interface BatchCaptureItemResult {
+  url: string;
+  ok: boolean;
+  article_id: string | null;
+  duplicate: boolean;
+  title: string | null;
+  extraction_quality: string | null;
+  error: string | null;
+}
+
+export interface BatchCaptureResponse {
+  ok: boolean;
+  results: BatchCaptureItemResult[];
+  added: number;
+  duplicates: number;
+  failed: number;
+}
+
+export function captureBatch(urls: string[], mode: "consume_later" | "learn_now"): Promise<BatchCaptureResponse> {
+  return apiFetch<BatchCaptureResponse>("/api/capture/batch", {
+    method: "POST",
+    body: JSON.stringify({ urls, mode }),
+  });
+}
+
 // Queue
 export interface QueueItem {
   id: string;

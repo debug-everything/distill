@@ -12,23 +12,24 @@ import {
   Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useSettings, textSizeClasses } from "@/lib/settings-store";
 import {
   captureUrl,
+  captureBatch,
   fetchQueue,
   triggerProcess,
   fetchProcessingStatus,
   type CaptureResponse,
+  type BatchCaptureResponse,
   type QueueResponse,
   type ProcessingStatus,
 } from "@/lib/api";
 
 export default function Home() {
-  const [url, setUrl] = useState("");
+  const [input, setInput] = useState("");
   const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
   const ts = textSizeClasses[textSize];
@@ -45,12 +46,23 @@ export default function Home() {
     refetchInterval: 2000,
   });
 
+  // Single URL capture
   const capture = useMutation({
     mutationFn: captureUrl,
     onSuccess: (data: CaptureResponse) => {
       if (!data.duplicate) {
-        setUrl("");
+        setInput("");
       }
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+    },
+  });
+
+  // Batch capture
+  const batchCapture = useMutation({
+    mutationFn: ({ urls, mode }: { urls: string[]; mode: "consume_later" | "learn_now" }) =>
+      captureBatch(urls, mode),
+    onSuccess: () => {
+      setInput("");
       queryClient.invalidateQueries({ queryKey: ["queue"] });
     },
   });
@@ -58,7 +70,6 @@ export default function Home() {
   const process = useMutation({
     mutationFn: triggerProcess,
     onSuccess: () => {
-      // Processing runs in the background — status polling handles the rest
       queryClient.invalidateQueries({ queryKey: ["processingStatus"] });
     },
   });
@@ -67,9 +78,21 @@ export default function Home() {
   const wasProcessing = processingStatus.data?.is_processing;
   const lastResult = processingStatus.data?.last_result;
 
+  // Parse URLs from input
+  const urls = input
+    .split(/[\n\r]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const isMulti = urls.length > 1;
+  const isBusy = capture.isPending || batchCapture.isPending;
+
   const handleCapture = (mode: "consume_later" | "learn_now") => {
-    if (!url.trim()) return;
-    capture.mutate({ url: url.trim(), mode });
+    if (urls.length === 0) return;
+    if (isMulti) {
+      batchCapture.mutate({ urls, mode });
+    } else {
+      capture.mutate({ url: urls[0], mode });
+    }
   };
 
   const isProcessing =
@@ -91,46 +114,52 @@ export default function Home() {
       {/* Capture form */}
       <section>
         <h2 className={`mb-4 font-medium ${ts.heading}`}>Add content</h2>
-        <div className="flex gap-2">
-          <Input
-            placeholder="Paste an article URL..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleCapture("consume_later");
-            }}
-            className={`flex-1 ${ts.body}`}
-          />
-        </div>
+        <textarea
+          placeholder="Paste article URLs (one per line)..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !isMulti) {
+              e.preventDefault();
+              handleCapture("consume_later");
+            }
+          }}
+          rows={isMulti ? Math.min(urls.length + 1, 8) : 1}
+          className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ts.body}`}
+        />
+        {isMulti && (
+          <p className={`mt-1 ${ts.small} text-muted-foreground`}>
+            {urls.length} URLs detected
+          </p>
+        )}
         <div className="mt-3 flex gap-2">
           <Button
             onClick={() => handleCapture("learn_now")}
-            disabled={!url.trim() || capture.isPending}
+            disabled={urls.length === 0 || isBusy}
             variant="default"
           >
-            {capture.isPending && capture.variables?.mode === "learn_now" ? (
+            {isBusy && (capture.variables?.mode === "learn_now" || batchCapture.variables?.mode === "learn_now") ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
               <Zap className="mr-1.5 h-4 w-4" />
             )}
-            Learn Now
+            Learn Now{isMulti ? ` (${urls.length})` : ""}
           </Button>
           <Button
             onClick={() => handleCapture("consume_later")}
-            disabled={!url.trim() || capture.isPending}
+            disabled={urls.length === 0 || isBusy}
             variant="outline"
           >
-            {capture.isPending &&
-            capture.variables?.mode === "consume_later" ? (
+            {isBusy && (capture.variables?.mode === "consume_later" || batchCapture.variables?.mode === "consume_later") ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
               <BookOpen className="mr-1.5 h-4 w-4" />
             )}
-            Read Later
+            Read Later{isMulti ? ` (${urls.length})` : ""}
           </Button>
         </div>
 
-        {/* Feedback */}
+        {/* Single capture feedback */}
         {capture.isSuccess && capture.data.duplicate && (
           <p className={`mt-2 ${ts.small} text-muted-foreground`}>
             Already in your queue.
@@ -149,6 +178,36 @@ export default function Home() {
         {capture.isError && (
           <p className={`mt-2 ${ts.small} text-destructive`}>
             {capture.error.message}
+          </p>
+        )}
+
+        {/* Batch capture feedback */}
+        {batchCapture.isSuccess && (
+          <div className={`mt-2 space-y-1 ${ts.small}`}>
+            <p className="text-green-600">
+              Added {batchCapture.data.added} article{batchCapture.data.added !== 1 ? "s" : ""}
+              {batchCapture.data.duplicates > 0 && (
+                <span className="text-muted-foreground">
+                  {" "}· {batchCapture.data.duplicates} duplicate{batchCapture.data.duplicates !== 1 ? "s" : ""} skipped
+                </span>
+              )}
+            </p>
+            {batchCapture.data.failed > 0 && (
+              <div className="text-destructive">
+                {batchCapture.data.results
+                  .filter((r) => !r.ok)
+                  .map((r) => (
+                    <p key={r.url} className="truncate">
+                      Failed: {r.url} — {r.error}
+                    </p>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+        {batchCapture.isError && (
+          <p className={`mt-2 ${ts.small} text-destructive`}>
+            {batchCapture.error.message}
           </p>
         )}
       </section>

@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "numpy>=1.26.0",
     "scipy>=1.14.0",
+    "truststore>=0.10.4",
 ]
 
 [tool.ruff]

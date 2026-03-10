@@ -65,3 +65,55 @@ export interface QueueResponse {
 export function fetchQueue(): Promise<QueueResponse> {
   return apiFetch<QueueResponse>("/api/queue");
 }
+
+// Digest
+export interface DigestSource {
+  article_id: string;
+  source_url: string;
+  source_name: string | null;
+  content_type: string;
+}
+
+export interface DigestCluster {
+  id: string;
+  digest_date: string;
+  title: string;
+  headline: string;
+  summary: string;
+  bullets: string[];
+  quotes: string[];
+  topic_tags: string[];
+  source_count: number;
+  is_merged: boolean;
+  status: string;
+  sources: DigestSource[];
+}
+
+export interface DigestResponse {
+  clusters: DigestCluster[];
+  date: string;
+}
+
+export interface ProcessingStatus {
+  is_processing: boolean;
+  total: number;
+  current: number;
+  stage: string;
+}
+
+export function triggerProcess(): Promise<{ ok: boolean; clusters_created?: number; articles_processed?: number }> {
+  return apiFetch("/api/digest/process", { method: "POST" });
+}
+
+export function fetchProcessingStatus(): Promise<ProcessingStatus> {
+  return apiFetch<ProcessingStatus>("/api/digest/status");
+}
+
+export function fetchDigest(date?: string): Promise<DigestResponse> {
+  const params = date ? `?digest_date=${date}` : "";
+  return apiFetch<DigestResponse>(`/api/digest${params}`);
+}
+
+export function markClusterDone(clusterId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/digest/${clusterId}/done`, { method: "POST" });
+}

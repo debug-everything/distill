@@ -195,6 +195,7 @@ async def _run_pipeline(db: AsyncSession) -> dict:
                 source_url=article.url,
                 source_name=article.source_domain,
                 content_type=article.content_type,
+                image_url=article.image_url,
             )
             db.add(source)
 

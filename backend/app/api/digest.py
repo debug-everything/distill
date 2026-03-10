@@ -18,6 +18,7 @@ class SourceItem(BaseModel):
     source_url: str
     source_name: str | None
     content_type: str
+    image_url: str | None = None
 
 
 class ClusterItem(BaseModel):
@@ -88,6 +89,7 @@ async def get_digest(
                         source_url=s.source_url,
                         source_name=s.source_name,
                         content_type=s.content_type,
+                        image_url=s.image_url,
                     )
                     for s in c.sources
                 ],

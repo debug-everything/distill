@@ -98,6 +98,7 @@ export interface DigestSource {
   source_url: string;
   source_name: string | null;
   content_type: string;
+  image_url: string | null;
 }
 
 export interface DigestCluster {

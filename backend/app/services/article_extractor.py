@@ -1,6 +1,7 @@
 """Article content extraction via httpx + readability-lxml."""
 
 import logging
+import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -22,6 +23,7 @@ class ExtractionResult:
     raw_html: str
     source_domain: str
     extraction_quality: str  # "ok" | "low"
+    image_url: str | None = None
 
 
 async def extract_article(url: str) -> ExtractionResult:
@@ -41,6 +43,7 @@ async def extract_article(url: str) -> ExtractionResult:
     summary_html = doc.summary()
     clean_text = _html_to_text(summary_html)
     source_domain = urlparse(url).netloc
+    image_url = _extract_og_image(raw_html)
 
     # Paywall detection: very short content likely means paywall
     word_count = len(clean_text.split())
@@ -55,13 +58,27 @@ async def extract_article(url: str) -> ExtractionResult:
         raw_html=raw_html,
         source_domain=source_domain,
         extraction_quality=extraction_quality,
+        image_url=image_url,
     )
+
+
+def _extract_og_image(html: str) -> str | None:
+    """Extract og:image or twitter:image from HTML meta tags."""
+    # Try og:image first, then twitter:image
+    for pattern in [
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+    ]:
+        match = re.search(pattern, html, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _html_to_text(html: str) -> str:
     """Strip HTML tags to get plain text."""
-    import re
-
     text = re.sub(r"<[^>]+>", " ", html)
     text = re.sub(r"\s+", " ", text).strip()
     return text

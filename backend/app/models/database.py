@@ -37,6 +37,7 @@ class Article(Base):
     status: Mapped[str] = mapped_column(Text, default="queued")
     extraction_quality: Mapped[str] = mapped_column(Text, default="ok")
     source_domain: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -78,6 +79,7 @@ class ClusterSource(Base):
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     source_name: Mapped[str | None] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text, default="article")
+    image_url: Mapped[str | None] = mapped_column(Text)
 
     cluster: Mapped["Cluster"] = relationship(back_populates="sources")
     article: Mapped["Article"] = relationship(back_populates="cluster_sources")

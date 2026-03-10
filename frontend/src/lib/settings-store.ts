@@ -2,12 +2,18 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 type TextSize = "sm" | "base" | "lg";
+export type TileFormat = "default" | "compact" | "minimal";
+export type TileLayout = "vertical" | "grid";
 
 interface SettingsState {
   theme: "light" | "dark" | "system";
   textSize: TextSize;
+  tileFormat: TileFormat;
+  tileLayout: TileLayout;
   setTheme: (theme: "light" | "dark" | "system") => void;
   setTextSize: (size: TextSize) => void;
+  setTileFormat: (format: TileFormat) => void;
+  setTileLayout: (layout: TileLayout) => void;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -15,8 +21,12 @@ export const useSettings = create<SettingsState>()(
     (set) => ({
       theme: "system",
       textSize: "base",
+      tileFormat: "default",
+      tileLayout: "vertical",
       setTheme: (theme) => set({ theme }),
       setTextSize: (textSize) => set({ textSize }),
+      setTileFormat: (tileFormat) => set({ tileFormat }),
+      setTileLayout: (tileLayout) => set({ tileLayout }),
     }),
     { name: "distill-settings" }
   )

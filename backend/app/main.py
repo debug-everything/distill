@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.capture import router as capture_router
 from app.api.health import router as health_router
+from app.api.queue import router as queue_router
 
 app = FastAPI(title="Distill", version="0.1.0")
 
@@ -14,3 +16,5 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(capture_router)
+app.include_router(queue_router)

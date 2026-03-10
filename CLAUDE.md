@@ -49,3 +49,4 @@ Migrations: `cd backend && uv run alembic upgrade head`
 - Update docs in `/docs/` whenever architecture, design decisions, or requirements change.
 - Keep `docs/implementation_plan.md` current: mark tasks done after completing them, add new tasks when planning or brainstorming.
 - Always evaluate tech design against industry best practices such as RESTful API and other engineering principles.
+- Identify opportunities to leverage Agentic AI and/or AI Workflow Patterns (e.g., chain-of-thought, reflection, tool use, planning). Refactor code to follow applicable patterns.

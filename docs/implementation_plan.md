@@ -140,6 +140,11 @@
 - Settings page or inline config for managing the topic list
 - Open question: should focused topics also influence clustering/ordering?
 
+### Agentic AI & Workflow Patterns
+- Audit codebase for opportunities to apply AI workflow patterns (chain-of-thought, reflection, tool use, planning, evaluation loops)
+- Refactor existing AI pipelines (summarization, RAG, topic tagging) to leverage applicable patterns
+- Examples: multi-step summarization with self-critique, agentic RAG with query decomposition, quality scoring with reflection
+
 ### Chat with External LLM ("Discuss This")
 - Button inside digest reading modal to continue exploring a topic via an external chat platform
 - Context to send: digest summary + bullet points + source URLs (not full article text — too long)

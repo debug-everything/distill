@@ -179,7 +179,7 @@ export default function Home() {
           <Button
             onClick={() => handleCapture("learn_now")}
             disabled={urls.length === 0 || isBusy}
-            variant="default"
+            variant="outline"
           >
             {isBusy && (capture.variables?.mode === "learn_now" || batchCapture.variables?.mode === "learn_now") ? (
               <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

@@ -5,6 +5,7 @@ This is the ONLY file that knows about model names, providers, or routing rules.
 All other code calls these functions; never LiteLLM/OpenAI directly.
 """
 
+import json
 import logging
 
 import httpx
@@ -18,6 +19,68 @@ logger = logging.getLogger(__name__)
 litellm.suppress_debug_info = True
 
 
+# ---------------------------------------------------------------------------
+# LLM mode tracking — consumers read this to know local vs cloud
+# ---------------------------------------------------------------------------
+
+class LLMTracker:
+    """Tracks which LLM provider is being used across all AI calls."""
+
+    def __init__(self):
+        self.current_mode: str | None = None  # "local" | "cloud" | None
+        self.is_active: bool = False  # True while an AI call is in flight
+        self._call_count: int = 0
+
+    def record(self, is_local: bool):
+        mode = "local" if is_local else "cloud"
+        # Cloud always trumps local — once cloud is used, it stays cloud
+        if mode == "cloud" or self.current_mode is None:
+            self.current_mode = mode
+
+    def start_call(self):
+        self._call_count += 1
+        self.is_active = True
+
+    def end_call(self):
+        self._call_count = max(0, self._call_count - 1)
+        if self._call_count == 0:
+            self.is_active = False
+
+    def reset(self):
+        self.current_mode = None
+
+    def to_dict(self):
+        # When active, predict mode from env config if no cloud call recorded yet
+        effective_mode = self.current_mode
+        if self.is_active and effective_mode != "cloud":
+            # If either tier is set to cloud, we'll hit cloud eventually
+            if settings.llm_mode_heavy == "cloud" or settings.llm_mode_light == "cloud":
+                effective_mode = "cloud"
+        return {
+            "llm_mode": effective_mode,
+            "is_active": self.is_active,
+        }
+
+
+llm_tracker = LLMTracker()
+
+
+def _track(fn):
+    """Decorator that marks an AI call as active in llm_tracker."""
+    async def wrapper(*args, **kwargs):
+        llm_tracker.start_call()
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            llm_tracker.end_call()
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Routing helpers
+# ---------------------------------------------------------------------------
+
 async def _ollama_available() -> bool:
     """Check if Ollama is reachable."""
     try:
@@ -28,8 +91,28 @@ async def _ollama_available() -> bool:
         return False
 
 
+async def _should_use_local(tier: str) -> bool:
+    """Determine whether to use local model based on mode config and availability.
+
+    tier: "light" or "heavy"
+    Returns True for local, False for cloud.
+    Raises RuntimeError if mode=local but Ollama is unreachable.
+    """
+    mode = settings.llm_mode_light if tier == "light" else settings.llm_mode_heavy
+
+    if mode == "cloud":
+        return False
+    if mode == "local":
+        available = await _ollama_available()
+        if not available:
+            raise RuntimeError(f"LLM_MODE_{tier.upper()}=local but Ollama is not reachable")
+        return True
+    # auto: try local first
+    return await _ollama_available()
+
+
 def _get_chat_model(tier: str = "heavy") -> str:
-    """Get the model name for the given tier, formatted for LiteLLM."""
+    """Get the local model name for the given tier, formatted for LiteLLM."""
     if tier == "heavy":
         return f"ollama/{settings.local_chat_heavy}"
     return f"ollama/{settings.local_chat_light}"
@@ -45,6 +128,11 @@ def _get_embed_model(local: bool = True) -> str:
     return settings.cloud_embed_model
 
 
+# ---------------------------------------------------------------------------
+# AI functions
+# ---------------------------------------------------------------------------
+
+@_track
 async def embed(texts: list[str]) -> list[list[float]]:
     """
     Embed a list of texts into 768-dimensional vectors.
@@ -52,7 +140,7 @@ async def embed(texts: list[str]) -> list[list[float]]:
     Uses local Ollama nomic-embed-text by default, falls back to
     OpenAI text-embedding-3-small (dimensions=768) when unavailable.
     """
-    use_local = await _ollama_available()
+    use_local = await _should_use_local("light")
 
     if use_local:
         model = _get_embed_model(local=True)
@@ -63,29 +151,32 @@ async def embed(texts: list[str]) -> list[list[float]]:
                 input=texts,
                 api_base=settings.ollama_base_url,
             )
+            llm_tracker.record(is_local=True)
             return [item["embedding"] for item in response.data]
         except Exception as e:
             logger.warning(f"embed: local model failed ({e}), falling back to cloud")
-            use_local = False
+            # Only fall back if mode is auto
+            if settings.llm_mode_light == "local":
+                raise
 
-    if not use_local:
-        model = _get_cloud_chat_model()
-        logger.info(f"embed: using cloud model {settings.cloud_embed_model} for {len(texts)} texts")
-        response = await litellm.aembedding(
-            model=settings.cloud_embed_model,
-            input=texts,
-            dimensions=settings.embed_dimensions,
-        )
-        return [item["embedding"] for item in response.data]
+    logger.info(f"embed: using cloud model {settings.cloud_embed_model} for {len(texts)} texts")
+    response = await litellm.aembedding(
+        model=settings.cloud_embed_model,
+        input=texts,
+        dimensions=settings.embed_dimensions,
+    )
+    llm_tracker.record(is_local=False)
+    return [item["embedding"] for item in response.data]
 
 
+@_track
 async def summarize(text: str, content_type: str = "article") -> dict:
     """
     Generate a multi-level summary of content.
 
     Returns: {headline, summary, bullets: list[str], quotes: list[str]}
     """
-    use_local = await _ollama_available()
+    use_local = await _should_use_local("heavy")
 
     system_prompt = "You are a concise news summarizer. Output valid JSON only."
     user_prompt = f"""Summarize the following {content_type} into a structured JSON object with these fields:
@@ -113,11 +204,12 @@ Text:
                 temperature=0.3,
                 response_format={"type": "json_object"},
             )
-            import json
-
+            llm_tracker.record(is_local=True)
             return json.loads(response.choices[0].message.content)
         except Exception as e:
             logger.warning(f"summarize: local model failed ({e}), falling back to cloud")
+            if settings.llm_mode_heavy == "local":
+                raise
 
     model = _get_cloud_chat_model()
     logger.info(f"summarize: using cloud model {model}")
@@ -130,18 +222,18 @@ Text:
         temperature=0.3,
         response_format={"type": "json_object"},
     )
-    import json
-
+    llm_tracker.record(is_local=False)
     return json.loads(response.choices[0].message.content)
 
 
+@_track
 async def score_quality(summary_text: str) -> int:
     """
     Score the quality of a summary on a scale of 1-10.
 
     Uses chat-light tier (fast, cheap).
     """
-    use_local = await _ollama_available()
+    use_local = await _should_use_local("light")
 
     prompt = f"""Rate the quality of this summary on a scale of 1-10.
 Consider: accuracy, completeness, clarity, and conciseness.
@@ -162,6 +254,7 @@ Summary:
             temperature=0.1,
             **kwargs,
         )
+        llm_tracker.record(is_local=use_local)
         score_str = response.choices[0].message.content.strip()
         return max(1, min(10, int(score_str)))
     except (ValueError, Exception) as e:
@@ -169,13 +262,14 @@ Summary:
         return 7
 
 
+@_track
 async def tag_topics(text: str) -> list[str]:
     """
     Auto-tag content with 1-3 topic labels.
 
     Uses chat-light tier.
     """
-    use_local = await _ollama_available()
+    use_local = await _should_use_local("light")
 
     prompt = f"""Assign 1-3 topic tags to this content. Choose from common categories like:
 AI & ML, Cloud, DevOps, Security, Business, Programming, Data, Science, Design, Career
@@ -197,8 +291,7 @@ Text:
             temperature=0.2,
             **kwargs,
         )
-        import json
-
+        llm_tracker.record(is_local=use_local)
         content = response.choices[0].message.content.strip()
         # Handle potential markdown wrapping
         if content.startswith("```"):
@@ -209,13 +302,14 @@ Text:
         return ["General"]
 
 
+@_track
 async def rag_answer(question: str, context_chunks: list[str]) -> dict:
     """
     Generate a RAG answer with citations.
 
     Returns: {answer: str, related_questions: list[str]}
     """
-    use_local = await _ollama_available()
+    use_local = await _should_use_local("heavy")
 
     context = "\n\n---\n\n".join(
         [f"[Source {i+1}]: {chunk}" for i, chunk in enumerate(context_chunks)]
@@ -251,6 +345,5 @@ Respond with a JSON object:
         response_format={"type": "json_object"},
         **kwargs,
     )
-    import json
-
+    llm_tracker.record(is_local=use_local)
     return json.loads(response.choices[0].message.content)

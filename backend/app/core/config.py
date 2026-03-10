@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     local_chat_light: str = "llama3.1:8b"
     local_embed_model: str = "nomic-embed-text"
 
+    # LLM routing mode: auto (local-first, cloud fallback) | cloud | local
+    llm_mode_light: str = "auto"   # embed, tag_topics, score_quality
+    llm_mode_heavy: str = "auto"   # summarize, rag_answer
+
     # Cloud fallback
     openai_api_key: str = ""
     anthropic_api_key: str = ""

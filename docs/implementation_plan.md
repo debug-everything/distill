@@ -67,6 +67,11 @@
 - [x] Theme toggle (light/dark/system) with ThemeProvider
 - [x] Text size toggle (sm/base/lg) applied globally
 - [x] `image_url` on Article + ClusterSource (og:image extraction, migration applied)
+- [x] RESTful API refactor: resource-oriented URLs, PATCH for status updates
+- [x] Reading settings popover (Apple Books-style): font family (sans/Lora/Source Serif), line spacing (compact/normal/relaxed), text size, theme
+- [x] LLM mode env config: `LLM_MODE_LIGHT` and `LLM_MODE_HEAVY` (auto/cloud/local)
+- [x] LLM provider indicator in navbar: Monitor (green) for local, Cloud (amber) for paid — pulses while active, fades when idle
+- [x] RAG query shows which LLM answered (local vs cloud badge)
 
 ---
 

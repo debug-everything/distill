@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.task_router import embed, tag_topics
+from app.core.task_router import embed, tag_topics, llm_tracker
 from app.models.database import Article, Embedding, KnowledgeItem
 from app.services.text_processing import chunk_text
 
@@ -23,6 +23,7 @@ class LearnNowStatus:
         self.total = 0
         self.current = 0
         self.stage = ""
+        self.llm_mode: str | None = None  # "local" | "cloud" | None
         self.last_result: dict | None = None
 
     def to_dict(self):
@@ -31,6 +32,7 @@ class LearnNowStatus:
             "total": self.total,
             "current": self.current,
             "stage": self.stage,
+            "llm_mode": llm_tracker.current_mode if self.is_processing else self.llm_mode,
             "last_result": self.last_result,
         }
 
@@ -138,6 +140,7 @@ async def _background_learn_now(article_ids: list[str]):
         learn_now_status.total = len(article_ids)
         learn_now_status.current = 0
         learn_now_status.stage = "Starting"
+        llm_tracker.reset()
 
         indexed = 0
         failed = 0
@@ -177,3 +180,4 @@ async def _background_learn_now(article_ids: list[str]):
         finally:
             learn_now_status.is_processing = False
             learn_now_status.stage = ""
+            learn_now_status.llm_mode = llm_tracker.current_mode

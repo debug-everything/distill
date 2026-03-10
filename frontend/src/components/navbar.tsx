@@ -2,34 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   Brain,
-  Sun,
-  Moon,
-  Monitor,
-  ALargeSmall,
   Newspaper,
   Search,
   Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useSettings } from "@/lib/settings-store";
+import { ReadingSettings } from "@/components/reading-settings";
+import { LLMIndicator } from "@/components/llm-indicator";
+import { fetchLLMStatus, type LLMStatus } from "@/lib/api";
 
 export function Navbar() {
   const pathname = usePathname();
-  const { theme, setTheme, textSize, setTextSize } = useSettings();
 
-  const cycleTheme = () => {
-    const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-    setTheme(next);
-  };
-
-  const cycleTextSize = () => {
-    const next = textSize === "sm" ? "base" : textSize === "base" ? "lg" : "sm";
-    setTextSize(next);
-  };
-
-  const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
+  const llmStatus = useQuery<LLMStatus>({
+    queryKey: ["llmStatus"],
+    queryFn: fetchLLMStatus,
+    refetchInterval: (query) =>
+      query.state.data?.is_active ? 1000 : 5000,
+  });
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
@@ -72,25 +65,12 @@ export function Navbar() {
           </Link>
         </nav>
 
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={cycleTextSize}
-            title={`Text size: ${textSize}`}
-            className="h-8 w-8"
-          >
-            <ALargeSmall className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={cycleTheme}
-            title={`Theme: ${theme}`}
-            className="h-8 w-8"
-          >
-            <ThemeIcon className="h-4 w-4" />
-          </Button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <LLMIndicator
+            mode={llmStatus.data?.llm_mode ?? null}
+            active={llmStatus.data?.is_active ?? false}
+          />
+          <ReadingSettings />
         </div>
       </div>
     </header>

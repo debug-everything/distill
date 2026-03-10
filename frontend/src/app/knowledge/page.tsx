@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  Cloud,
   ExternalLink,
   Loader2,
+  Monitor,
   Search,
   SendHorizonal,
 } from "lucide-react";
@@ -12,7 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { useSettings, textSizeClasses } from "@/lib/settings-store";
+import {
+  useSettings,
+  textSizeClasses,
+  readingFontClasses,
+  lineSpacingClasses,
+} from "@/lib/settings-store";
 import {
   queryKB,
   fetchKB,
@@ -22,8 +29,13 @@ import {
 
 export default function KnowledgePage() {
   const [question, setQuestion] = useState("");
+  const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
+  const readingFont = useSettings((s) => s.readingFont);
+  const lineSpacing = useSettings((s) => s.lineSpacing);
   const ts = textSizeClasses[textSize];
+  const rf = readingFontClasses[readingFont];
+  const ls = lineSpacingClasses[lineSpacing];
 
   const kb = useQuery<KBListResponse>({
     queryKey: ["kb"],
@@ -32,6 +44,14 @@ export default function KnowledgePage() {
 
   const ask = useMutation({
     mutationFn: queryKB,
+    onMutate: () => {
+      // Immediately show "active" in navbar indicator
+      queryClient.setQueryData(["llmStatus"], { llm_mode: null, is_active: true });
+    },
+    onSettled: () => {
+      // Refresh actual status when done
+      queryClient.invalidateQueries({ queryKey: ["llmStatus"] });
+    },
   });
 
   const handleAsk = () => {
@@ -89,9 +109,23 @@ export default function KnowledgePage() {
         <section className="mt-6">
           <Card>
             <CardContent className="p-6">
-              <p className={`${ts.body} leading-relaxed whitespace-pre-wrap`}>
+              <p className={`${ts.body} ${ls} ${rf} whitespace-pre-wrap`}>
                 {ask.data.answer}
               </p>
+
+              {/* LLM mode badge */}
+              {ask.data.llm_mode && (
+                <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {ask.data.llm_mode === "local" ? (
+                    <Monitor className="h-3 w-3 text-green-500" />
+                  ) : (
+                    <Cloud className="h-3 w-3 text-amber-500" />
+                  )}
+                  <span>
+                    {ask.data.llm_mode === "local" ? "Local LLM" : "Cloud LLM (paid)"}
+                  </span>
+                </div>
+              )}
 
               {/* Sources */}
               {ask.data.sources.length > 0 && (

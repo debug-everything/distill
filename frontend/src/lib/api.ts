@@ -110,6 +110,7 @@ export interface LearnNowStatus {
   total: number;
   current: number;
   stage: string;
+  llm_mode: "local" | "cloud" | null;
   last_result: LearnNowResult | null;
 }
 
@@ -158,6 +159,7 @@ export interface ProcessingStatus {
   total: number;
   current: number;
   stage: string;
+  llm_mode: "local" | "cloud" | null;
   last_result: ProcessingResult | null;
 }
 
@@ -185,6 +187,16 @@ export function promoteCluster(clusterId: string): Promise<{ ok: boolean; indexe
   return apiFetch(`/api/digests/${clusterId}/promote`, { method: "POST" });
 }
 
+// LLM Status
+export interface LLMStatus {
+  llm_mode: "local" | "cloud" | null;
+  is_active: boolean;
+}
+
+export function fetchLLMStatus(): Promise<LLMStatus> {
+  return apiFetch<LLMStatus>("/api/llm-status");
+}
+
 // RAG / Knowledge Base
 export interface SourceChunk {
   knowledge_item_id: string;
@@ -200,6 +212,7 @@ export interface QueryResponse {
   answer: string;
   sources: SourceChunk[];
   related_questions: string[];
+  llm_mode: "local" | "cloud" | null;
 }
 
 export function queryKB(question: string): Promise<QueryResponse> {

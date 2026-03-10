@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.task_router import embed, rag_answer
+from app.core.task_router import embed, rag_answer, llm_tracker
 from app.models.database import Embedding, KnowledgeItem
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceChunk]
     related_questions: list[str]
+    llm_mode: str | None = None
 
 
 class KBItem(BaseModel):
@@ -54,6 +55,8 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
     """RAG query: embed question → pgvector top-5 → LLM answer with citations."""
     if not req.question.strip():
         return QueryResponse(ok=False, answer="Please provide a question.", sources=[], related_questions=[])
+
+    llm_tracker.reset()
 
     # Embed the question
     question_embedding = (await embed([req.question]))[0]
@@ -104,6 +107,7 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
             answer=answer_result.get("answer", ""),
             sources=sources,
             related_questions=answer_result.get("related_questions", []),
+            llm_mode=llm_tracker.current_mode,
         )
     except Exception as e:
         logger.error(f"RAG answer generation failed: {e}")
@@ -112,6 +116,7 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
             answer=f"Failed to generate answer: {e}",
             sources=sources,
             related_questions=[],
+            llm_mode=llm_tracker.current_mode,
         )
 
 

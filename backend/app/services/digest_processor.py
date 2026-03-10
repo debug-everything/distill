@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.task_router import embed, summarize, tag_topics
+from app.core.task_router import embed, summarize, tag_topics, llm_tracker
 from app.models.database import Article, Cluster, ClusterSource
 from app.services.text_processing import chunk_text, cluster_by_similarity
 
@@ -23,6 +23,7 @@ class ProcessingStatus:
         self.total = 0
         self.current = 0
         self.stage = ""
+        self.llm_mode: str | None = None  # "local" | "cloud" | None
         self.last_result: dict | None = None
 
     def to_dict(self):
@@ -31,6 +32,7 @@ class ProcessingStatus:
             "total": self.total,
             "current": self.current,
             "stage": self.stage,
+            "llm_mode": llm_tracker.current_mode if self.is_processing else self.llm_mode,
             "last_result": self.last_result,
         }
 
@@ -53,6 +55,7 @@ async def _background_process():
 
     async with _processing_lock:
         status.is_processing = True
+        llm_tracker.reset()
         try:
             async with async_session() as db:
                 result = await _run_pipeline(db)
@@ -63,6 +66,7 @@ async def _background_process():
         finally:
             status.is_processing = False
             status.stage = ""
+            status.llm_mode = llm_tracker.current_mode
 
 
 async def _run_pipeline(db: AsyncSession) -> dict:

@@ -31,6 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useSettings,
   textSizeClasses,
+  readingFontClasses,
+  lineSpacingClasses,
   type TileFormat,
   type TileLayout,
 } from "@/lib/settings-store";
@@ -263,9 +265,13 @@ export default function DigestPage() {
   const textSize = useSettings((s) => s.textSize);
   const tileFormat = useSettings((s) => s.tileFormat);
   const tileLayout = useSettings((s) => s.tileLayout);
+  const readingFont = useSettings((s) => s.readingFont);
+  const lineSpacing = useSettings((s) => s.lineSpacing);
   const setTileFormat = useSettings((s) => s.setTileFormat);
   const setTileLayout = useSettings((s) => s.setTileLayout);
   const ts = textSizeClasses[textSize];
+  const rf = readingFontClasses[readingFont];
+  const ls = lineSpacingClasses[lineSpacing];
 
   const digest = useQuery<DigestResponse>({
     queryKey: ["digest", selectedDate],
@@ -473,8 +479,8 @@ export default function DigestPage() {
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="summary" className="mt-5 space-y-4">
-                  <p className={`${ts.body} leading-relaxed`}>
+                <TabsContent value="summary" className={`mt-5 space-y-4 ${rf}`}>
+                  <p className={`${ts.body} ${ls}`}>
                     {selectedCluster.summary}
                   </p>
                   {selectedCluster.bullets.length > 0 && (
@@ -484,7 +490,7 @@ export default function DigestPage() {
                         {selectedCluster.bullets.map((bullet, i) => (
                           <li
                             key={i}
-                            className={`flex gap-2.5 ${ts.body} leading-relaxed`}
+                            className={`flex gap-2.5 ${ts.body} ${ls}`}
                           >
                             <span className="mt-0.5 text-muted-foreground">•</span>
                             <span>{bullet}</span>
@@ -495,7 +501,7 @@ export default function DigestPage() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="quotes" className="mt-5 space-y-4">
+                <TabsContent value="quotes" className={`mt-5 space-y-4 ${rf}`}>
                   {selectedCluster.quotes.length === 0 && (
                     <p className={`${ts.body} text-muted-foreground`}>
                       No quotes extracted.
@@ -504,7 +510,7 @@ export default function DigestPage() {
                   {selectedCluster.quotes.map((quote, i) => (
                     <blockquote
                       key={i}
-                      className={`border-l-2 pl-5 ${ts.body} italic leading-relaxed text-muted-foreground`}
+                      className={`border-l-2 pl-5 ${ts.body} italic ${ls} text-muted-foreground`}
                     >
                       &ldquo;{quote}&rdquo;
                     </blockquote>

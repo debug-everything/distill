@@ -30,14 +30,17 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │  FASTAPI BACKEND (localhost:8000)                                    │
 │                                                                      │
-│  POST /api/capture        — Submit URL (learn_now or consume_later)  │
-│  POST /api/digest/process — Trigger on-demand digest processing      │
-│  GET  /api/digest         — Get today's clusters                     │
-│  GET  /api/digest/{date}  — Digest history                           │
-│  POST /api/digest/{id}/promote — Learn this → embed to KB           │
-│  POST /api/digest/{id}/done    — Archive cluster                    │
-│  POST /api/rag/query      — RAG natural language query               │
-│  GET  /api/knowledge      — List knowledge base items                │
+│  POST  /api/articles                — Capture URL (learn_now or consume_later) │
+│  POST  /api/articles/batch          — Batch capture (max 50 URLs)             │
+│  GET   /api/articles                — List articles by mode/status            │
+│  GET   /api/articles/indexing-status — Learn Now progress                     │
+│  POST  /api/digests/process         — Trigger on-demand digest processing     │
+│  GET   /api/digests?date=           — Get clusters for a date                 │
+│  GET   /api/digests/processing-status — Digest processing progress            │
+│  PATCH /api/digests/{id}            — Update cluster status (done, etc.)      │
+│  POST  /api/digests/{id}/promote    — Learn this → embed to KB               │
+│  POST  /api/knowledge/query         — RAG natural language query              │
+│  GET   /api/knowledge               — List knowledge base items              │
 │  GET  /health             — Health check                             │
 │                                                                      │
 │    ┌─────────────────────────────┐                                   │
@@ -173,7 +176,7 @@ URL submitted with mode=learn_now
 
 ```
 User clicks [Learn this] on digest cluster
-    → POST /api/digest/{id}/promote
+    → POST /api/digests/{id}/promote
     → fetch full clean_text from articles in cluster
     → chunk_text(clean_text)               [no LLM]
     → embed(chunks)                        [embedder]
@@ -185,7 +188,7 @@ User clicks [Learn this] on digest cluster
 
 ```
 User submits question
-    → POST /api/rag/query {question}
+    → POST /api/knowledge/query {question}
     → embed(question)                      [embedder — SAME model as docs]
     → pgvector: SELECT chunks ORDER BY embedding <=> query_vec LIMIT 5
     → rag_answer(question, context_chunks) [chat-heavy]
@@ -299,13 +302,16 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check (db, ollama, env status) |
-| `POST` | `/api/capture` | Submit URL with mode (learn_now / consume_later) |
-| `POST` | `/api/digest/process` | Trigger on-demand digest processing |
-| `GET` | `/api/digest` | Get today's clusters |
-| `GET` | `/api/digest/{date}` | Get clusters for specific date |
-| `POST` | `/api/digest/{id}/promote` | Learn this → embed cluster to KB |
-| `POST` | `/api/digest/{id}/done` | Archive cluster |
-| `POST` | `/api/rag/query` | RAG natural language query |
+| `POST` | `/api/articles` | Capture single URL with mode (learn_now / consume_later) |
+| `POST` | `/api/articles/batch` | Batch capture (max 50 URLs) |
+| `GET` | `/api/articles` | List articles split by mode (consume_later / learn_now) |
+| `GET` | `/api/articles/indexing-status` | Learn Now processing progress |
+| `POST` | `/api/digests/process` | Trigger on-demand digest processing |
+| `GET` | `/api/digests?date=` | Get clusters for a date (defaults to today) |
+| `GET` | `/api/digests/processing-status` | Digest processing progress |
+| `PATCH` | `/api/digests/{id}` | Update cluster status (done, unread) |
+| `POST` | `/api/digests/{id}/promote` | Learn this → embed cluster to KB |
+| `POST` | `/api/knowledge/query` | RAG natural language query |
 | `GET` | `/api/knowledge` | List knowledge base items |
 
 ---

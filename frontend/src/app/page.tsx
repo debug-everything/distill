@@ -5,11 +5,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   BookOpen,
-  Zap,
+  Check,
   ExternalLink,
   AlertTriangle,
   Loader2,
   Play,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,10 +23,12 @@ import {
   fetchQueue,
   triggerProcess,
   fetchProcessingStatus,
+  fetchLearnNowStatus,
   type CaptureResponse,
   type BatchCaptureResponse,
   type QueueResponse,
   type ProcessingStatus,
+  type LearnNowStatus,
 } from "@/lib/api";
 
 export default function Home() {
@@ -34,17 +37,56 @@ export default function Home() {
   const textSize = useSettings((s) => s.textSize);
   const ts = textSizeClasses[textSize];
 
+  // Smart polling flags — only poll status when processing is active
+  const [digestPolling, setDigestPolling] = useState(false);
+  const [learnNowPolling, setLearnNowPolling] = useState(false);
+
   const queue = useQuery<QueueResponse>({
     queryKey: ["queue"],
     queryFn: fetchQueue,
     refetchInterval: 5000,
   });
 
-  const processingStatus = useQuery<ProcessingStatus>({
-    queryKey: ["processingStatus"],
+  // Digest processing status — only poll when active
+  const digestStatus = useQuery<ProcessingStatus>({
+    queryKey: ["digestStatus"],
     queryFn: fetchProcessingStatus,
-    refetchInterval: 2000,
+    refetchInterval: digestPolling ? 2000 : false,
+    enabled: digestPolling,
   });
+
+  // Learn Now status — only poll when active
+  const learnNowStatus = useQuery<LearnNowStatus>({
+    queryKey: ["learnNowStatus"],
+    queryFn: fetchLearnNowStatus,
+    refetchInterval: learnNowPolling ? 2000 : false,
+    enabled: learnNowPolling,
+  });
+
+  // Stop polling when processing completes
+  const prevDigestProcessing = useRef(false);
+  useEffect(() => {
+    const isActive = digestStatus.data?.is_processing ?? false;
+    if (prevDigestProcessing.current && !isActive) {
+      // Just finished — refresh data, stop polling
+      setDigestPolling(false);
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["digest"] });
+    }
+    prevDigestProcessing.current = isActive;
+  }, [digestStatus.data?.is_processing, queryClient]);
+
+  const prevLearnNowProcessing = useRef(false);
+  useEffect(() => {
+    const isActive = learnNowStatus.data?.is_processing ?? false;
+    if (prevLearnNowProcessing.current && !isActive) {
+      // Just finished — refresh data, stop polling
+      setLearnNowPolling(false);
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["kb"] });
+    }
+    prevLearnNowProcessing.current = isActive;
+  }, [learnNowStatus.data?.is_processing, queryClient]);
 
   // Single URL capture
   const capture = useMutation({
@@ -54,6 +96,10 @@ export default function Home() {
         setInput("");
       }
       queryClient.invalidateQueries({ queryKey: ["queue"] });
+      // If learn_now, start polling
+      if (capture.variables?.mode === "learn_now" && !data.duplicate) {
+        setLearnNowPolling(true);
+      }
     },
   });
 
@@ -61,22 +107,23 @@ export default function Home() {
   const batchCapture = useMutation({
     mutationFn: ({ urls, mode }: { urls: string[]; mode: "consume_later" | "learn_now" }) =>
       captureBatch(urls, mode),
-    onSuccess: () => {
+    onSuccess: (data: BatchCaptureResponse) => {
       setInput("");
       queryClient.invalidateQueries({ queryKey: ["queue"] });
+      // If learn_now with new articles, start polling
+      if (batchCapture.variables?.mode === "learn_now" && data.added > 0) {
+        setLearnNowPolling(true);
+      }
     },
   });
 
+  // Digest process
   const process = useMutation({
     mutationFn: triggerProcess,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["processingStatus"] });
+      setDigestPolling(true);
     },
   });
-
-  // When processing finishes, refresh queue and digest
-  const wasProcessing = processingStatus.data?.is_processing;
-  const lastResult = processingStatus.data?.last_result;
 
   // Parse URLs from input
   const urls = input
@@ -95,19 +142,15 @@ export default function Home() {
     }
   };
 
-  const isProcessing =
-    process.isPending || processingStatus.data?.is_processing;
+  const isDigestProcessing =
+    process.isPending || digestStatus.data?.is_processing;
+  const digestResult = digestStatus.data?.last_result;
 
-  // Track when processing transitions from running → done
-  const prevProcessingRef = useRef(false);
-  useEffect(() => {
-    if (prevProcessingRef.current && !wasProcessing) {
-      // Processing just finished — refresh data
-      queryClient.invalidateQueries({ queryKey: ["queue"] });
-      queryClient.invalidateQueries({ queryKey: ["digest"] });
-    }
-    prevProcessingRef.current = !!wasProcessing;
-  }, [wasProcessing, queryClient]);
+  const isLearnNowProcessing = learnNowStatus.data?.is_processing;
+  const learnNowResult = learnNowStatus.data?.last_result;
+
+  const consumeLater = queue.data?.consume_later;
+  const learnNow = queue.data?.learn_now;
 
   return (
     <div className="min-h-screen">
@@ -214,45 +257,29 @@ export default function Home() {
 
       <Separator className="my-8" />
 
-      {/* Queue */}
+      {/* Learn Now section */}
       <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className={`font-medium ${ts.heading}`}>
-            Queue{" "}
-            {queue.data && (
-              <span className="text-muted-foreground">
-                ({queue.data.total})
-              </span>
-            )}
-          </h2>
-          <Button
-            variant="outline"
-            onClick={() => process.mutate()}
-            disabled={
-              isProcessing || !queue.data || queue.data.total === 0
-            }
-          >
-            {isProcessing ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-1.5 h-4 w-4" />
-            )}
-            {isProcessing ? "Processing..." : "Process Now"}
-          </Button>
-        </div>
+        <h2 className={`mb-4 font-medium ${ts.heading}`}>
+          Learn Now{" "}
+          {learnNow && (
+            <span className="text-muted-foreground">
+              ({learnNow.total})
+            </span>
+          )}
+        </h2>
 
-        {/* Processing status */}
-        {isProcessing && processingStatus.data?.stage && (
+        {/* Learn Now processing status */}
+        {isLearnNowProcessing && learnNowStatus.data?.stage && (
           <div className="mb-4 rounded-md border bg-muted/50 p-4">
             <p className={ts.small}>
-              {processingStatus.data.stage}
+              {learnNowStatus.data.stage}
             </p>
-            {processingStatus.data.total > 0 && (
+            {learnNowStatus.data.total > 0 && (
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full bg-primary transition-all"
                   style={{
-                    width: `${(processingStatus.data.current / processingStatus.data.total) * 100}%`,
+                    width: `${(learnNowStatus.data.current / learnNowStatus.data.total) * 100}%`,
                   }}
                 />
               </div>
@@ -260,19 +287,134 @@ export default function Home() {
           </div>
         )}
 
-        {/* Process result */}
-        {lastResult && !isProcessing && lastResult.ok && (
+        {/* Learn Now result */}
+        {learnNowResult && !isLearnNowProcessing && learnNowResult.ok && (
           <p className={`mb-4 ${ts.small} text-green-600`}>
-            Created {lastResult.clusters_created} clusters from{" "}
-            {lastResult.articles_processed} articles.{" "}
+            Indexed {learnNowResult.indexed} article{learnNowResult.indexed !== 1 ? "s" : ""} to knowledge base.{" "}
+            <Link href="/knowledge" className="underline">
+              View knowledge base
+            </Link>
+          </p>
+        )}
+        {learnNowResult && !isLearnNowProcessing && !learnNowResult.ok && (
+          <p className={`mb-4 ${ts.small} text-destructive`}>
+            Indexing failed: {learnNowResult.detail}
+          </p>
+        )}
+
+        {learnNow && learnNow.items.length === 0 && !isLearnNowProcessing && (
+          <p className={`${ts.body} text-muted-foreground`}>
+            No recent Learn Now articles.
+          </p>
+        )}
+
+        {learnNow && learnNow.items.length > 0 && (
+          <div className="space-y-2">
+            {learnNow.items.map((item) => (
+              <Card key={item.id}>
+                <CardContent className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate font-medium ${ts.body}`}>
+                      {item.title || item.url}
+                    </p>
+                    <p className={`${ts.small} text-muted-foreground`}>
+                      {item.source_domain}
+                    </p>
+                  </div>
+                  {item.status === "indexing" && (
+                    <Badge variant="outline" className="shrink-0">
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      Indexing
+                    </Badge>
+                  )}
+                  {item.status === "kb_indexed" && (
+                    <Badge variant="secondary" className="shrink-0">
+                      <Check className="mr-1 h-3 w-3" />
+                      Indexed
+                    </Badge>
+                  )}
+                  {item.status === "failed" && (
+                    <Badge variant="outline" className="shrink-0 border-red-300 text-red-600">
+                      <AlertTriangle className="mr-1 h-3 w-3" />
+                      Failed
+                    </Badge>
+                  )}
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <Separator className="my-8" />
+
+      {/* Read Later Queue */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className={`font-medium ${ts.heading}`}>
+            Read Later{" "}
+            {consumeLater && (
+              <span className="text-muted-foreground">
+                ({consumeLater.total})
+              </span>
+            )}
+          </h2>
+          <Button
+            variant="outline"
+            onClick={() => process.mutate()}
+            disabled={
+              isDigestProcessing || !consumeLater || consumeLater.total === 0
+            }
+          >
+            {isDigestProcessing ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-1.5 h-4 w-4" />
+            )}
+            {isDigestProcessing ? "Processing..." : "Process Now"}
+          </Button>
+        </div>
+
+        {/* Digest processing status */}
+        {isDigestProcessing && digestStatus.data?.stage && (
+          <div className="mb-4 rounded-md border bg-muted/50 p-4">
+            <p className={ts.small}>
+              {digestStatus.data.stage}
+            </p>
+            {digestStatus.data.total > 0 && (
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${(digestStatus.data.current / digestStatus.data.total) * 100}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Digest result */}
+        {digestResult && !isDigestProcessing && digestResult.ok && (
+          <p className={`mb-4 ${ts.small} text-green-600`}>
+            Created {digestResult.clusters_created} clusters from{" "}
+            {digestResult.articles_processed} articles.{" "}
             <Link href="/digest" className="underline">
               View digest
             </Link>
           </p>
         )}
-        {lastResult && !isProcessing && !lastResult.ok && (
+        {digestResult && !isDigestProcessing && !digestResult.ok && (
           <p className={`mb-4 ${ts.small} text-destructive`}>
-            Processing failed: {lastResult.detail}
+            Processing failed: {digestResult.detail}
           </p>
         )}
 
@@ -280,15 +422,15 @@ export default function Home() {
           <p className={`${ts.small} text-muted-foreground`}>Loading queue...</p>
         )}
 
-        {queue.data && queue.data.items.length === 0 && (
+        {consumeLater && consumeLater.items.length === 0 && (
           <p className={`${ts.body} text-muted-foreground`}>
-            No articles queued. Paste a URL above to get started.
+            No articles queued. Paste a URL above and click Read Later.
           </p>
         )}
 
-        {queue.data && queue.data.items.length > 0 && (
+        {consumeLater && consumeLater.items.length > 0 && (
           <div className="space-y-2">
-            {queue.data.items.map((item) => (
+            {consumeLater.items.map((item) => (
               <Card key={item.id}>
                 <CardContent className="flex items-center gap-3 py-4">
                   <div className="min-w-0 flex-1">

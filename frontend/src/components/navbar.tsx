@@ -60,10 +60,16 @@ export function Navbar() {
               <span className="hidden sm:inline">Digest</span>
             </Button>
           </Link>
-          <Button variant="ghost" size="sm" className="gap-1.5" disabled>
-            <Search className="h-4 w-4" />
-            <span className="hidden sm:inline">Knowledge</span>
-          </Button>
+          <Link href="/knowledge">
+            <Button
+              variant={pathname === "/knowledge" ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-1.5"
+            >
+              <Search className="h-4 w-4" />
+              <span className="hidden sm:inline">Knowledge</span>
+            </Button>
+          </Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-1">

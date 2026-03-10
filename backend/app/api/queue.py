@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -20,41 +20,63 @@ class QueueItem(BaseModel):
     created_at: str
 
 
-class QueueResponse(BaseModel):
+class QueueSection(BaseModel):
     items: list[QueueItem]
     total: int
 
 
-@router.get("/api/queue", response_model=QueueResponse)
-async def get_queue(db: AsyncSession = Depends(get_db)):
-    """Get all queued (unprocessed) articles."""
-    result = await db.execute(
+class QueueResponse(BaseModel):
+    consume_later: QueueSection
+    learn_now: QueueSection
+
+
+def _to_item(a: "Article") -> QueueItem:
+    return QueueItem(
+        id=str(a.id),
+        url=a.url,
+        title=a.title,
+        source_domain=a.source_domain,
+        mode=a.mode,
+        status=a.status,
+        extraction_quality=a.extraction_quality or "ok",
+        created_at=a.created_at.isoformat(),
+    )
+
+
+@router.get("/api/articles", response_model=QueueResponse)
+async def list_articles(db: AsyncSession = Depends(get_db)):
+    """List articles, split by mode."""
+
+    # Consume later: queued or processing
+    cl_result = await db.execute(
         select(Article)
-        .where(Article.status == "queued", Article.mode == "consume_later")
+        .where(
+            Article.mode == "consume_later",
+            Article.status.in_(["queued", "processing"]),
+        )
         .order_by(Article.created_at.desc())
     )
-    articles = result.scalars().all()
+    cl_articles = cl_result.scalars().all()
 
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Article)
-        .where(Article.status == "queued", Article.mode == "consume_later")
+    # Learn now: indexing or recently indexed (last 20)
+    ln_result = await db.execute(
+        select(Article)
+        .where(
+            Article.mode == "learn_now",
+            Article.status.in_(["indexing", "kb_indexed", "failed"]),
+        )
+        .order_by(Article.created_at.desc())
+        .limit(20)
     )
-    total = count_result.scalar() or 0
+    ln_articles = ln_result.scalars().all()
 
     return QueueResponse(
-        items=[
-            QueueItem(
-                id=str(a.id),
-                url=a.url,
-                title=a.title,
-                source_domain=a.source_domain,
-                mode=a.mode,
-                status=a.status,
-                extraction_quality=a.extraction_quality or "ok",
-                created_at=a.created_at.isoformat(),
-            )
-            for a in articles
-        ],
-        total=total,
+        consume_later=QueueSection(
+            items=[_to_item(a) for a in cl_articles],
+            total=len(cl_articles),
+        ),
+        learn_now=QueueSection(
+            items=[_to_item(a) for a in ln_articles],
+            total=len(ln_articles),
+        ),
     )

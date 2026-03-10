@@ -39,7 +39,7 @@ export interface CaptureResponse {
 }
 
 export function captureUrl(data: CaptureRequest): Promise<CaptureResponse> {
-  return apiFetch<CaptureResponse>("/api/capture", {
+  return apiFetch<CaptureResponse>("/api/articles", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -65,7 +65,7 @@ export interface BatchCaptureResponse {
 }
 
 export function captureBatch(urls: string[], mode: "consume_later" | "learn_now"): Promise<BatchCaptureResponse> {
-  return apiFetch<BatchCaptureResponse>("/api/capture/batch", {
+  return apiFetch<BatchCaptureResponse>("/api/articles/batch", {
     method: "POST",
     body: JSON.stringify({ urls, mode }),
   });
@@ -83,13 +83,38 @@ export interface QueueItem {
   created_at: string;
 }
 
-export interface QueueResponse {
+export interface QueueSection {
   items: QueueItem[];
   total: number;
 }
 
+export interface QueueResponse {
+  consume_later: QueueSection;
+  learn_now: QueueSection;
+}
+
 export function fetchQueue(): Promise<QueueResponse> {
-  return apiFetch<QueueResponse>("/api/queue");
+  return apiFetch<QueueResponse>("/api/articles");
+}
+
+// Learn Now status
+export interface LearnNowResult {
+  ok: boolean;
+  indexed?: number;
+  failed?: number;
+  detail?: string;
+}
+
+export interface LearnNowStatus {
+  is_processing: boolean;
+  total: number;
+  current: number;
+  stage: string;
+  last_result: LearnNowResult | null;
+}
+
+export function fetchLearnNowStatus(): Promise<LearnNowStatus> {
+  return apiFetch<LearnNowStatus>("/api/articles/indexing-status");
 }
 
 // Digest
@@ -137,18 +162,68 @@ export interface ProcessingStatus {
 }
 
 export function triggerProcess(): Promise<{ ok: boolean; detail?: string }> {
-  return apiFetch("/api/digest/process", { method: "POST" });
+  return apiFetch("/api/digests/process", { method: "POST" });
 }
 
 export function fetchProcessingStatus(): Promise<ProcessingStatus> {
-  return apiFetch<ProcessingStatus>("/api/digest/status");
+  return apiFetch<ProcessingStatus>("/api/digests/processing-status");
 }
 
 export function fetchDigest(date?: string): Promise<DigestResponse> {
   const params = date ? `?digest_date=${date}` : "";
-  return apiFetch<DigestResponse>(`/api/digest${params}`);
+  return apiFetch<DigestResponse>(`/api/digests${params}`);
 }
 
 export function markClusterDone(clusterId: string): Promise<{ ok: boolean }> {
-  return apiFetch(`/api/digest/${clusterId}/done`, { method: "POST" });
+  return apiFetch(`/api/digests/${clusterId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "done" }),
+  });
+}
+
+export function promoteCluster(clusterId: string): Promise<{ ok: boolean; indexed?: number; failed?: number }> {
+  return apiFetch(`/api/digests/${clusterId}/promote`, { method: "POST" });
+}
+
+// RAG / Knowledge Base
+export interface SourceChunk {
+  knowledge_item_id: string;
+  chunk_index: number;
+  chunk_text: string;
+  title: string;
+  url: string | null;
+  similarity: number;
+}
+
+export interface QueryResponse {
+  ok: boolean;
+  answer: string;
+  sources: SourceChunk[];
+  related_questions: string[];
+}
+
+export function queryKB(question: string): Promise<QueryResponse> {
+  return apiFetch<QueryResponse>("/api/knowledge/query", {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+}
+
+export interface KBItem {
+  id: string;
+  title: string;
+  url: string | null;
+  source_type: string;
+  topic_tags: string[];
+  created_at: string;
+  chunk_count: number;
+}
+
+export interface KBListResponse {
+  items: KBItem[];
+  total: number;
+}
+
+export function fetchKB(): Promise<KBListResponse> {
+  return apiFetch<KBListResponse>("/api/knowledge");
 }

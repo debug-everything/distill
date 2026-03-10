@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
+  BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +13,7 @@ import {
   LayoutList,
   Layers,
   List,
+  Loader2,
   Rows3,
   ScanLine,
 } from "lucide-react";
@@ -35,6 +37,7 @@ import {
 import {
   fetchDigest,
   markClusterDone,
+  promoteCluster,
   type DigestCluster,
   type DigestResponse,
 } from "@/lib/api";
@@ -274,6 +277,14 @@ export default function DigestPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["digest"] });
       setSelectedCluster(null);
+    },
+  });
+
+  const promote = useMutation({
+    mutationFn: promoteCluster,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["digest"] });
+      queryClient.invalidateQueries({ queryKey: ["kb"] });
     },
   });
 
@@ -530,8 +541,17 @@ export default function DigestPage() {
               <Separator className="my-4" />
 
               <div className="flex gap-2">
-                <Button variant="outline" disabled>
-                  Learn This
+                <Button
+                  variant="outline"
+                  onClick={() => promote.mutate(selectedCluster.id)}
+                  disabled={promote.isPending || selectedCluster.status === "promoted"}
+                >
+                  {promote.isPending ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BookOpen className="mr-1.5 h-4 w-4" />
+                  )}
+                  {selectedCluster.status === "promoted" ? "Learned" : "Learn This"}
                 </Button>
                 <Button
                   variant="ghost"
@@ -541,6 +561,16 @@ export default function DigestPage() {
                   Done
                 </Button>
               </div>
+              {promote.isSuccess && (
+                <p className={`mt-2 ${ts.small} text-green-600`}>
+                  Added to knowledge base ({promote.data.indexed} article{promote.data.indexed !== 1 ? "s" : ""} indexed)
+                </p>
+              )}
+              {promote.isError && (
+                <p className={`mt-2 ${ts.small} text-destructive`}>
+                  {promote.error.message}
+                </p>
+              )}
             </>
           )}
         </DialogContent>

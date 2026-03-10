@@ -2,6 +2,7 @@ import hashlib
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.database import Article
 from app.services.article_extractor import extract_article
+from app.services.knowledge_service import start_learn_now_in_background, learn_now_status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -63,6 +65,8 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
         logger.error(f"Extraction failed for {url}: {e}")
         return BatchCaptureItemResult(url=url, ok=False, error=str(e))
 
+    status = "indexing" if mode == "learn_now" else "queued"
+
     article = Article(
         url=url,
         url_hash=url_hash,
@@ -71,7 +75,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
         clean_text=result.clean_text,
         content_type="article",
         mode=mode,
-        status="queued",
+        status=status,
         extraction_quality=result.extraction_quality,
         source_domain=result.source_domain,
         image_url=result.image_url,
@@ -88,7 +92,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
     )
 
 
-@router.post("/api/capture", response_model=CaptureResponse)
+@router.post("/api/articles")
 async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
     if req.mode not in ("consume_later", "learn_now"):
         raise HTTPException(status_code=400, detail="mode must be consume_later or learn_now")
@@ -106,6 +110,8 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
         logger.error(f"Extraction failed for {req.url}: {e}")
         raise HTTPException(status_code=422, detail=f"Could not extract content: {e}")
 
+    status = "indexing" if req.mode == "learn_now" else "queued"
+
     article = Article(
         url=req.url,
         url_hash=url_hash,
@@ -114,7 +120,7 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
         clean_text=result.clean_text,
         content_type="article",
         mode=req.mode,
-        status="queued",
+        status=status,
         extraction_quality=result.extraction_quality,
         source_domain=result.source_domain,
         image_url=result.image_url,
@@ -123,15 +129,22 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(article)
 
-    return CaptureResponse(
+    response_data = CaptureResponse(
         ok=True,
         article_id=str(article.id),
         title=result.title,
         extraction_quality=result.extraction_quality,
     )
 
+    # Learn Now: kick off background indexing, return 202
+    if req.mode == "learn_now":
+        start_learn_now_in_background([str(article.id)])
+        return JSONResponse(status_code=202, content=response_data.model_dump())
 
-@router.post("/api/capture/batch", response_model=BatchCaptureResponse)
+    return response_data
+
+
+@router.post("/api/articles/batch")
 async def capture_batch(req: BatchCaptureRequest, db: AsyncSession = Depends(get_db)):
     """Capture multiple URLs at once. Extraction errors don't fail the whole batch."""
     if req.mode not in ("consume_later", "learn_now"):
@@ -151,10 +164,25 @@ async def capture_batch(req: BatchCaptureRequest, db: AsyncSession = Depends(get
     duplicates = sum(1 for r in results if r.duplicate)
     failed = sum(1 for r in results if not r.ok)
 
-    return BatchCaptureResponse(
+    response_data = BatchCaptureResponse(
         ok=True,
         results=results,
         added=added,
         duplicates=duplicates,
         failed=failed,
     )
+
+    # Learn Now batch: kick off background indexing for all new articles
+    if req.mode == "learn_now":
+        article_ids = [r.article_id for r in results if r.ok and not r.duplicate and r.article_id]
+        if article_ids:
+            start_learn_now_in_background(article_ids)
+        return JSONResponse(status_code=202, content=response_data.model_dump())
+
+    return response_data
+
+
+@router.get("/api/articles/indexing-status")
+async def get_learn_now_status():
+    """Get current Learn Now processing status."""
+    return learn_now_status.to_dict()

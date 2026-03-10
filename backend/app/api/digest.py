@@ -1,14 +1,15 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models.database import Cluster, ClusterSource
+from app.models.database import Article, Cluster, ClusterSource
 from app.services.digest_processor import start_processing_in_background, status as processing_status
+from app.services.knowledge_service import index_articles_to_kb
 
 router = APIRouter()
 
@@ -41,20 +42,24 @@ class DigestResponse(BaseModel):
     date: str
 
 
-@router.post("/api/digest/process")
+class DigestPatchRequest(BaseModel):
+    status: str
+
+
+@router.post("/api/digests/process")
 async def trigger_process():
     """Trigger on-demand digest processing in the background."""
     return start_processing_in_background()
 
 
-@router.get("/api/digest/status")
+@router.get("/api/digests/processing-status")
 async def get_processing_status():
-    """Get current processing status."""
+    """Get current digest processing status."""
     return processing_status.to_dict()
 
 
-@router.get("/api/digest", response_model=DigestResponse)
-async def get_digest(
+@router.get("/api/digests", response_model=DigestResponse)
+async def get_digests(
     digest_date: str | None = None, db: AsyncSession = Depends(get_db)
 ):
     """Get digest clusters for a given date (defaults to today)."""
@@ -99,11 +104,38 @@ async def get_digest(
     )
 
 
-@router.post("/api/digest/{cluster_id}/done")
-async def mark_done(cluster_id: str, db: AsyncSession = Depends(get_db)):
-    """Archive a cluster."""
+@router.patch("/api/digests/{cluster_id}")
+async def update_digest(cluster_id: str, req: DigestPatchRequest, db: AsyncSession = Depends(get_db)):
+    """Update a digest cluster's status."""
+    if req.status not in ("done", "unread"):
+        raise HTTPException(status_code=400, detail="status must be 'done' or 'unread'")
     await db.execute(
-        update(Cluster).where(Cluster.id == cluster_id).values(status="done")
+        update(Cluster).where(Cluster.id == cluster_id).values(status=req.status)
     )
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/api/digests/{cluster_id}/promote")
+async def promote_to_kb(cluster_id: str, db: AsyncSession = Depends(get_db)):
+    """Promote a cluster's articles to the knowledge base."""
+    result = await db.execute(
+        select(ClusterSource.article_id).where(ClusterSource.cluster_id == cluster_id)
+    )
+    article_ids = [row[0] for row in result.all()]
+
+    if not article_ids:
+        return {"ok": False, "detail": "No articles found for this cluster"}
+
+    index_result = await index_articles_to_kb(article_ids, db)
+
+    await db.execute(
+        update(Cluster).where(Cluster.id == cluster_id).values(status="promoted")
+    )
+    await db.commit()
+
+    return {
+        "ok": True,
+        "indexed": index_result["indexed"],
+        "failed": index_result["failed"],
+    }

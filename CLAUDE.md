@@ -47,3 +47,5 @@ Migrations: `cd backend && uv run alembic upgrade head`
 - Push back or suggest better alternatives when appropriate.
 - Run typecheck + lint before considering a task done (`cd frontend && pnpm build`, `cd backend && uv run python -m py_compile app/main.py`).
 - Update docs in `/docs/` whenever architecture, design decisions, or requirements change.
+- Keep `docs/implementation_plan.md` current: mark tasks done after completing them, add new tasks when planning or brainstorming.
+- Always evaluate tech design against industry best practices such as RESTful API and other engineering principles.

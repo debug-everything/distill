@@ -64,10 +64,10 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
         text("""
             SELECT e.id, e.knowledge_item_id, e.chunk_index, e.chunk_text,
                    ki.title, ki.url,
-                   1 - (e.embedding <=> :embedding::vector) AS similarity
+                   1 - (e.embedding <=> CAST(:embedding AS vector)) AS similarity
             FROM embeddings e
             JOIN knowledge_items ki ON ki.id = e.knowledge_item_id
-            ORDER BY e.embedding <=> :embedding::vector
+            ORDER BY e.embedding <=> CAST(:embedding AS vector)
             LIMIT 5
         """),
         {"embedding": embedding_str},

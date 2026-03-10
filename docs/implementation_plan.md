@@ -121,6 +121,35 @@
 
 ---
 
+## Ideas (unhashed — needs design)
+
+### Customizable Summarization
+- User-configurable summary depth/verbosity (e.g., brief / standard / detailed)
+- Configurable bullet point count (currently hardcoded to 3)
+- Settings stored client-side (Zustand) and sent as params to summarize pipeline
+
+### Focused Topics
+- User maintains a list of "focused topics" (e.g., "agentic commerce", "US stocks")
+- Summarization prompt weighs these topics more heavily — summaries lean toward user interests
+- Quote extraction also prioritizes focused topics
+- Settings page or inline config for managing the topic list
+- Open question: should focused topics also influence clustering/ordering?
+
+### Chat with External LLM ("Discuss This")
+- Button inside digest reading modal to continue exploring a topic via an external chat platform
+- Context to send: digest summary + bullet points + source URLs (not full article text — too long)
+- **Platform deep-link support (as of early 2025):**
+  - **ChatGPT**: No official URL scheme to pre-fill a new chat with context
+  - **Claude**: No deep-link API for initiating a chat with payload
+  - **Perplexity**: No known pre-fill URL, but search queries work via `perplexity.ai/search?q=`
+- **Practical approaches to evaluate:**
+  1. **Copy-to-clipboard**: Format context as markdown, user pastes into their preferred chat. Lowest friction, works everywhere.
+  2. **In-app chat**: Use OpenAI/Anthropic API directly within Distill to continue the conversation (adds cost, but keeps context in-app).
+  3. **Perplexity search link**: Open `perplexity.ai/search?q={encoded question about topic}` — loses full context but good for research follow-up.
+- Open question: which approach best fits the workflow? Could offer multiple ("Copy context" + "Ask in Distill" + "Search Perplexity").
+
+---
+
 ## Verification
 
 After each phase:

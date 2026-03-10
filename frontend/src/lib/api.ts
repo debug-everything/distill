@@ -79,6 +79,7 @@ export interface QueueItem {
   source_domain: string | null;
   mode: string;
   status: string;
+  content_type: string;
   extraction_quality: string;
   created_at: string;
 }
@@ -124,6 +125,7 @@ export interface DigestSource {
   source_url: string;
   source_name: string | null;
   content_type: string;
+  extraction_quality: string;
   image_url: string | null;
 }
 

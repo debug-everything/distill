@@ -16,6 +16,7 @@ import {
   Loader2,
   Rows3,
   ScanLine,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,14 @@ function getClusterImage(cluster: DigestCluster): string | null {
   return null;
 }
 
+function hasVideoSource(cluster: DigestCluster): boolean {
+  return cluster.sources.some((s) => s.content_type === "video");
+}
+
+function hasAutoTranscript(cluster: DigestCluster): boolean {
+  return cluster.sources.some((s) => s.extraction_quality === "auto-transcript");
+}
+
 // ----- Tile components per format -----
 
 function DefaultTile({
@@ -108,6 +117,17 @@ function DefaultTile({
                   {tag}
                 </Badge>
               ))}
+              {hasVideoSource(cluster) && (
+                <Badge variant="outline" className="shrink-0">
+                  <Video className="mr-1 h-3 w-3" />
+                  Video
+                </Badge>
+              )}
+              {hasAutoTranscript(cluster) && (
+                <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
+                  Auto-transcript
+                </Badge>
+              )}
             </div>
             <CardTitle className={ts.heading}>{cluster.title}</CardTitle>
           </CardHeader>
@@ -183,6 +203,17 @@ function CompactTile({
                 {cluster.source_count} sources
               </Badge>
             )}
+            {hasVideoSource(cluster) && (
+              <Badge variant="outline" className="shrink-0 text-xs">
+                <Video className="mr-1 h-3 w-3" />
+                Video
+              </Badge>
+            )}
+            {hasAutoTranscript(cluster) && (
+              <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
+                Auto-transcript
+              </Badge>
+            )}
           </div>
           <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
         </div>
@@ -223,6 +254,17 @@ function MinimalTile({
             {cluster.is_merged && (
               <Badge variant="secondary" className="shrink-0 text-xs">
                 {cluster.source_count} sources
+              </Badge>
+            )}
+            {hasVideoSource(cluster) && (
+              <Badge variant="outline" className="shrink-0 text-xs">
+                <Video className="mr-1 h-3 w-3" />
+                Video
+              </Badge>
+            )}
+            {hasAutoTranscript(cluster) && (
+              <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
+                Auto-transcript
               </Badge>
             )}
           </div>
@@ -524,9 +566,22 @@ export default function DigestPage() {
                       className="flex items-center justify-between rounded-md border p-4"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className={`font-medium ${ts.body}`}>
-                          {source.source_name || "Unknown"}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${ts.body}`}>
+                            {source.source_name || "Unknown"}
+                          </p>
+                          {source.content_type === "video" && (
+                            <Badge variant="outline" className="shrink-0 text-xs">
+                              <Video className="mr-1 h-3 w-3" />
+                              Video
+                            </Badge>
+                          )}
+                          {source.extraction_quality === "auto-transcript" && (
+                            <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
+                              Auto-transcript
+                            </Badge>
+                          )}
+                        </div>
                         <p className={`truncate ${ts.small} text-muted-foreground`}>
                           {source.source_url}
                         </p>

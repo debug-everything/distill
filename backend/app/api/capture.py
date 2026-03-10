@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.database import Article
-from app.services.article_extractor import extract_article
+from app.services.content_extractor import extract_content
 from app.services.knowledge_service import start_learn_now_in_background, learn_now_status
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
         return BatchCaptureItemResult(url=url, ok=True, duplicate=True)
 
     try:
-        result = await extract_article(url)
+        result = await extract_content(url)
     except Exception as e:
         logger.error(f"Extraction failed for {url}: {e}")
         return BatchCaptureItemResult(url=url, ok=False, error=str(e))
@@ -73,7 +73,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
         title=result.title,
         raw_html=result.raw_html,
         clean_text=result.clean_text,
-        content_type="article",
+        content_type=result.content_type,
         mode=mode,
         status=status,
         extraction_quality=result.extraction_quality,
@@ -105,7 +105,7 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
 
     # Extract article content at capture time
     try:
-        result = await extract_article(req.url)
+        result = await extract_content(req.url)
     except Exception as e:
         logger.error(f"Extraction failed for {req.url}: {e}")
         raise HTTPException(status_code=422, detail=f"Could not extract content: {e}")
@@ -118,7 +118,7 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
         title=result.title,
         raw_html=result.raw_html,
         clean_text=result.clean_text,
-        content_type="article",
+        content_type=result.content_type,
         mode=req.mode,
         status=status,
         extraction_quality=result.extraction_quality,

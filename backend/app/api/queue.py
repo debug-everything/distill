@@ -16,6 +16,7 @@ class QueueItem(BaseModel):
     source_domain: str | None
     mode: str
     status: str
+    content_type: str
     extraction_quality: str
     created_at: str
 
@@ -38,6 +39,7 @@ def _to_item(a: "Article") -> QueueItem:
         source_domain=a.source_domain,
         mode=a.mode,
         status=a.status,
+        content_type=a.content_type or "article",
         extraction_quality=a.extraction_quality or "ok",
         created_at=a.created_at.isoformat(),
     )

@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Loader2,
   Play,
+  Video,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,13 @@ import {
   type LearnNowStatus,
 } from "@/lib/api";
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m ${secs}s`;
+}
+
 export default function Home() {
   const [input, setInput] = useState("");
   const queryClient = useQueryClient();
@@ -40,6 +48,12 @@ export default function Home() {
   // Smart polling flags — only poll status when processing is active
   const [digestPolling, setDigestPolling] = useState(false);
   const [learnNowPolling, setLearnNowPolling] = useState(false);
+
+  // Client-side elapsed time tracking (updated on each poll tick)
+  const digestStartedAt = useRef<number | null>(null);
+  const [digestElapsed, setDigestElapsed] = useState<number>(0);
+  const learnNowStartedAt = useRef<number | null>(null);
+  const [learnNowElapsed, setLearnNowElapsed] = useState<number>(0);
 
   const queue = useQuery<QueueResponse>({
     queryKey: ["queue"],
@@ -63,30 +77,49 @@ export default function Home() {
     enabled: learnNowPolling,
   });
 
-  // Stop polling when processing completes
+  // Stop polling when processing completes + track elapsed time
   const prevDigestProcessing = useRef(false);
   useEffect(() => {
     const isActive = digestStatus.data?.is_processing ?? false;
-    if (prevDigestProcessing.current && !isActive) {
-      // Just finished — refresh data, stop polling
+    if (isActive && !prevDigestProcessing.current) {
+      // Just started
+      digestStartedAt.current = Date.now();
+      setDigestElapsed(0);
+    } else if (isActive && digestStartedAt.current) {
+      // Still processing — update elapsed on each poll tick
+      setDigestElapsed(Math.round((Date.now() - digestStartedAt.current) / 1000));
+    } else if (prevDigestProcessing.current && !isActive) {
+      // Just finished — capture final elapsed, refresh data, stop polling
+      if (digestStartedAt.current) {
+        setDigestElapsed(Math.round((Date.now() - digestStartedAt.current) / 1000));
+      }
+      digestStartedAt.current = null;
       setDigestPolling(false);
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["digest"] });
     }
     prevDigestProcessing.current = isActive;
-  }, [digestStatus.data?.is_processing, queryClient]);
+  }, [digestStatus.data?.is_processing, digestStatus.dataUpdatedAt, queryClient]);
 
   const prevLearnNowProcessing = useRef(false);
   useEffect(() => {
     const isActive = learnNowStatus.data?.is_processing ?? false;
-    if (prevLearnNowProcessing.current && !isActive) {
-      // Just finished — refresh data, stop polling
+    if (isActive && !prevLearnNowProcessing.current) {
+      learnNowStartedAt.current = Date.now();
+      setLearnNowElapsed(0);
+    } else if (isActive && learnNowStartedAt.current) {
+      setLearnNowElapsed(Math.round((Date.now() - learnNowStartedAt.current) / 1000));
+    } else if (prevLearnNowProcessing.current && !isActive) {
+      if (learnNowStartedAt.current) {
+        setLearnNowElapsed(Math.round((Date.now() - learnNowStartedAt.current) / 1000));
+      }
+      learnNowStartedAt.current = null;
       setLearnNowPolling(false);
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["kb"] });
     }
     prevLearnNowProcessing.current = isActive;
-  }, [learnNowStatus.data?.is_processing, queryClient]);
+  }, [learnNowStatus.data?.is_processing, learnNowStatus.dataUpdatedAt, queryClient]);
 
   // Single URL capture
   const capture = useMutation({
@@ -273,6 +306,9 @@ export default function Home() {
           <div className="mb-4 rounded-md border bg-muted/50 p-4">
             <p className={ts.small}>
               {learnNowStatus.data.stage}
+              {learnNowElapsed > 0 && (
+                <span className="ml-2 text-muted-foreground">({formatElapsed(learnNowElapsed)})</span>
+              )}
             </p>
             {learnNowStatus.data.total > 0 && (
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -290,7 +326,8 @@ export default function Home() {
         {/* Learn Now result */}
         {learnNowResult && !isLearnNowProcessing && learnNowResult.ok && (
           <p className={`mb-4 ${ts.small} text-green-600`}>
-            Indexed {learnNowResult.indexed} article{learnNowResult.indexed !== 1 ? "s" : ""} to knowledge base.{" "}
+            Indexed {learnNowResult.indexed} article{learnNowResult.indexed !== 1 ? "s" : ""} to knowledge base
+            {learnNowElapsed > 0 && ` in ${formatElapsed(learnNowElapsed)}`}.{" "}
             <Link href="/knowledge" className="underline">
               View knowledge base
             </Link>
@@ -321,6 +358,20 @@ export default function Home() {
                       {item.source_domain}
                     </p>
                   </div>
+                  {item.content_type === "video" && (
+                    <Badge variant="outline" className="shrink-0">
+                      <Video className="mr-1 h-3 w-3" />
+                      Video
+                    </Badge>
+                  )}
+                  {item.extraction_quality === "auto-transcript" && (
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-amber-300 text-amber-600"
+                    >
+                      Auto-transcript
+                    </Badge>
+                  )}
                   {item.status === "indexing" && (
                     <Badge variant="outline" className="shrink-0">
                       <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -379,7 +430,9 @@ export default function Home() {
             ) : (
               <Play className="mr-1.5 h-4 w-4" />
             )}
-            {isDigestProcessing ? "Processing..." : "Process Now"}
+            {isDigestProcessing
+              ? `Processing... ${digestElapsed > 0 ? formatElapsed(digestElapsed) : ""}`
+              : "Process Now"}
           </Button>
         </div>
 
@@ -388,6 +441,9 @@ export default function Home() {
           <div className="mb-4 rounded-md border bg-muted/50 p-4">
             <p className={ts.small}>
               {digestStatus.data.stage}
+              {digestElapsed > 0 && (
+                <span className="ml-2 text-muted-foreground">({formatElapsed(digestElapsed)})</span>
+              )}
             </p>
             {digestStatus.data.total > 0 && (
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -406,7 +462,8 @@ export default function Home() {
         {digestResult && !isDigestProcessing && digestResult.ok && (
           <p className={`mb-4 ${ts.small} text-green-600`}>
             Created {digestResult.clusters_created} clusters from{" "}
-            {digestResult.articles_processed} articles.{" "}
+            {digestResult.articles_processed} articles
+            {digestElapsed > 0 && ` in ${formatElapsed(digestElapsed)}`}.{" "}
             <Link href="/digest" className="underline">
               View digest
             </Link>
@@ -441,6 +498,20 @@ export default function Home() {
                       {item.source_domain}
                     </p>
                   </div>
+                  {item.content_type === "video" && (
+                    <Badge variant="outline" className="shrink-0">
+                      <Video className="mr-1 h-3 w-3" />
+                      Video
+                    </Badge>
+                  )}
+                  {item.extraction_quality === "auto-transcript" && (
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-amber-300 text-amber-600"
+                    >
+                      Auto-transcript
+                    </Badge>
+                  )}
                   {item.extraction_quality === "low" && (
                     <Badge
                       variant="outline"

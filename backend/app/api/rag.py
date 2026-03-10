@@ -2,9 +2,8 @@ import logging
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.task_router import embed, rag_answer, llm_tracker
@@ -122,16 +121,21 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/api/knowledge", response_model=KBListResponse)
 async def list_kb(db: AsyncSession = Depends(get_db)):
-    """List all knowledge base items."""
+    """List all knowledge base items with chunk counts."""
+    chunk_count_sq = (
+        select(Embedding.knowledge_item_id, func.count(1).label("chunk_count"))
+        .group_by(Embedding.knowledge_item_id)
+        .subquery()
+    )
     result = await db.execute(
-        select(KnowledgeItem)
-        .options(selectinload(KnowledgeItem.embeddings))
+        select(KnowledgeItem, func.coalesce(chunk_count_sq.c.chunk_count, 0).label("chunk_count"))
+        .outerjoin(chunk_count_sq, KnowledgeItem.id == chunk_count_sq.c.knowledge_item_id)
         .order_by(KnowledgeItem.created_at.desc())
     )
-    items = result.scalars().all()
+    rows = result.all()
 
     return KBListResponse(
-        total=len(items),
+        total=len(rows),
         items=[
             KBItem(
                 id=str(ki.id),
@@ -140,8 +144,8 @@ async def list_kb(db: AsyncSession = Depends(get_db)):
                 source_type=ki.source_type,
                 topic_tags=ki.topic_tags or [],
                 created_at=ki.created_at.isoformat(),
-                chunk_count=len(ki.embeddings),
+                chunk_count=chunk_count,
             )
-            for ki in items
+            for ki, chunk_count in rows
         ],
     )

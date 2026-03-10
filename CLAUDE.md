@@ -38,6 +38,7 @@ Migrations: `cd backend && uv run alembic upgrade head`
 - **DB**: Neon Postgres + pgvector. SSL via `truststore` (injected at top of `main.py`). Alembic for migrations.
 - **Settings**: Client-side preferences (theme, text size, tile format/layout) in Zustand with `persist` middleware.
 - **Long-running tasks**: Process endpoints return immediately, work runs in background asyncio tasks. Frontend polls status.
+- **Design Philosophy**: Avoid bloated and code duplications. Favor known design patterns, DRY, low-coupling and high-cohesion.
 
 ## Working Style
 

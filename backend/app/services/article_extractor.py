@@ -2,11 +2,12 @@
 
 import logging
 import re
-from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import httpx
 from readability import Document
+
+from app.services.content_extractor import ExtractionResult
 
 logger = logging.getLogger(__name__)
 
@@ -14,16 +15,6 @@ _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
-
-
-@dataclass
-class ExtractionResult:
-    title: str
-    clean_text: str
-    raw_html: str
-    source_domain: str
-    extraction_quality: str  # "ok" | "low"
-    image_url: str | None = None
 
 
 async def extract_article(url: str) -> ExtractionResult:
@@ -39,13 +30,11 @@ async def extract_article(url: str) -> ExtractionResult:
     raw_html = response.text
     doc = Document(raw_html)
     title = doc.title() or ""
-    # Get text content, strip HTML tags
     summary_html = doc.summary()
     clean_text = _html_to_text(summary_html)
     source_domain = urlparse(url).netloc
     image_url = _extract_og_image(raw_html)
 
-    # Paywall detection: very short content likely means paywall
     word_count = len(clean_text.split())
     extraction_quality = "low" if word_count < 200 else "ok"
 
@@ -57,6 +46,7 @@ async def extract_article(url: str) -> ExtractionResult:
         clean_text=clean_text,
         raw_html=raw_html,
         source_domain=source_domain,
+        content_type="article",
         extraction_quality=extraction_quality,
         image_url=image_url,
     )
@@ -64,7 +54,6 @@ async def extract_article(url: str) -> ExtractionResult:
 
 def _extract_og_image(html: str) -> str | None:
     """Extract og:image or twitter:image from HTML meta tags."""
-    # Try og:image first, then twitter:image
     for pattern in [
         r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',

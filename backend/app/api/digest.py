@@ -19,6 +19,7 @@ class SourceItem(BaseModel):
     source_url: str
     source_name: str | None
     content_type: str
+    extraction_quality: str
     image_url: str | None = None
 
 
@@ -68,7 +69,7 @@ async def get_digests(
     result = await db.execute(
         select(Cluster)
         .where(Cluster.digest_date == target_date)
-        .options(selectinload(Cluster.sources))
+        .options(selectinload(Cluster.sources).selectinload(ClusterSource.article))
         .order_by(Cluster.is_merged.desc(), Cluster.created_at.desc())
     )
     clusters = result.scalars().all()
@@ -94,6 +95,7 @@ async def get_digests(
                         source_url=s.source_url,
                         source_name=s.source_name,
                         content_type=s.content_type,
+                        extraction_quality=s.article.extraction_quality if s.article else "ok",
                         image_url=s.image_url,
                     )
                     for s in c.sources

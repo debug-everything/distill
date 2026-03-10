@@ -13,7 +13,7 @@
 | 1 | Consume Later Pipeline | MOSTLY DONE | URL capture → on-demand/batch process → digest dashboard |
 | 2 | Learn Now + RAG | DONE | Learn Now direct-to-KB, Learn This promotion, RAG query |
 | 3 | Polish | NOT STARTED | Quality gate, snooze, cost tracking, loading states |
-| 4 | YouTube Support | NOT STARTED | Video transcript extraction in both modes |
+| 4 | YouTube Support | DONE | Video transcript extraction in both modes |
 | 5 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
 
 ---
@@ -105,11 +105,17 @@
 
 ---
 
-## Phase 4 — YouTube Support — NOT STARTED
-- [ ] Detect YouTube URL → youtube-transcript-api → transcript
-- [ ] Works in both Learn Now and Consume Later modes
-- [ ] Videos can cluster with articles on same topic
-- [ ] Video badges + thumbnails in UI
+## Phase 4 — YouTube Support — DONE
+- [x] Refactored extraction: `content_extractor.py` factory → `article_extractor.py` / `video_extractor.py` (strategy pattern)
+- [x] YouTube URL detection (youtube.com/watch, youtu.be, youtube.com/shorts)
+- [x] Transcript extraction via `youtube-transcript-api` v1.x (manual preferred, auto-generated fallback)
+- [x] Title via oembed, thumbnail via predictable YouTube URL pattern (no API key)
+- [x] `extraction_quality`: "ok" (manual), "auto-transcript" (auto-generated), "low" (< 100 words)
+- [x] `content_type` = "video" stored on Article, passed through to queue API
+- [x] Works in both Learn Now and Consume Later modes (no pipeline changes needed)
+- [x] Videos cluster with articles naturally (same headline embedding)
+- [x] Video badge + auto-transcript badge on queue items (both sections)
+- [x] Thumbnails already supported via `image_url`
 
 ---
 
@@ -128,10 +134,17 @@
 
 ## Ideas (unhashed — needs design)
 
-### Customizable Summarization
-- User-configurable summary depth/verbosity (e.g., brief / standard / detailed)
+### Customizable Summarization + Progressive Expansion
+- **System-level default depth**: User-configurable summary verbosity (concise / standard / detailed) — affects digest processing output
 - Configurable bullet point count (currently hardcoded to 3)
 - Settings stored client-side (Zustand) and sent as params to summarize pipeline
+- **On-demand expansion** ("Expand Summary" in reading modal): progressive disclosure for individual clusters
+  - User reads concise summary → clicks Expand → LLM generates detailed summary with sections of interest
+  - Inspired by Chrome/Edge built-in summarization UX
+  - Cache expanded summaries in JSONB on `clusters` table (e.g., `summaries: { concise, detailed }`) — avoid re-generating on re-open
+  - **Cost control**: local LLM only by default; no cloud fallback unless explicitly configured
+  - **Short content guard**: disable expansion when source article is too short to produce a meaningfully deeper summary (tentatively ~500 words min; also auto-disable for `extraction_quality=low` articles)
+  - Open question: how many expansion levels? Two (concise → detailed) is probably enough
 
 ### Focused Topics
 - User maintains a list of "focused topics" (e.g., "agentic commerce", "US stocks")
@@ -139,6 +152,14 @@
 - Quote extraction also prioritizes focused topics
 - Settings page or inline config for managing the topic list
 - Open question: should focused topics also influence clustering/ordering?
+
+### Content Evaluation Scores (configurable, off by default)
+- Toggle per-article LLM evaluation during digest processing
+- **Interest match score**: How well content matches user's focused topics list (ties into Focused Topics feature)
+- **Usefulness score**: Actionability and novelty of the content
+- **Truthfulness score**: Deferred — requires retrieval-based verification to be reliable, not just LLM self-grading
+- Should run on local LLM only by default (cost: ~$0.005/article on cloud)
+- Scores displayed on digest tiles as subtle indicators
 
 ### Agentic AI & Workflow Patterns
 - Audit codebase for opportunities to apply AI workflow patterns (chain-of-thought, reflection, tool use, planning, evaluation loops)

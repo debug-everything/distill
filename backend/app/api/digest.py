@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.models.database import Cluster, ClusterSource
-from app.services.digest_processor import process_digest, status as processing_status
+from app.services.digest_processor import start_processing_in_background, status as processing_status
 
 router = APIRouter()
 
@@ -41,10 +41,9 @@ class DigestResponse(BaseModel):
 
 
 @router.post("/api/digest/process")
-async def trigger_process(db: AsyncSession = Depends(get_db)):
-    """Trigger on-demand digest processing."""
-    result = await process_digest(db)
-    return result
+async def trigger_process():
+    """Trigger on-demand digest processing in the background."""
+    return start_processing_in_background()
 
 
 @router.get("/api/digest/status")

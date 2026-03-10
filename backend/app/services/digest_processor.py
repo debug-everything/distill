@@ -23,6 +23,7 @@ class ProcessingStatus:
         self.total = 0
         self.current = 0
         self.stage = ""
+        self.last_result: dict | None = None
 
     def to_dict(self):
         return {
@@ -30,22 +31,35 @@ class ProcessingStatus:
             "total": self.total,
             "current": self.current,
             "stage": self.stage,
+            "last_result": self.last_result,
         }
 
 
 status = ProcessingStatus()
 
 
-async def process_digest(db: AsyncSession) -> dict:
-    """Process all queued consume_later articles into digest clusters."""
+def start_processing_in_background() -> dict:
+    """Kick off digest processing as a background task. Returns immediately."""
     if _processing_lock.locked():
         return {"ok": False, "detail": "Processing already in progress"}
+
+    asyncio.get_event_loop().create_task(_background_process())
+    return {"ok": True, "detail": "Processing started"}
+
+
+async def _background_process():
+    """Run the pipeline with its own DB session (independent of request lifecycle)."""
+    from app.core.database import async_session
 
     async with _processing_lock:
         status.is_processing = True
         try:
-            result = await _run_pipeline(db)
-            return result
+            async with async_session() as db:
+                result = await _run_pipeline(db)
+                status.last_result = result
+        except Exception as e:
+            logger.error(f"Background processing failed: {e}")
+            status.last_result = {"ok": False, "detail": str(e)}
         finally:
             status.is_processing = False
             status.stage = ""

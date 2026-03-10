@@ -94,14 +94,22 @@ export interface DigestResponse {
   date: string;
 }
 
+export interface ProcessingResult {
+  ok: boolean;
+  clusters_created?: number;
+  articles_processed?: number;
+  detail?: string;
+}
+
 export interface ProcessingStatus {
   is_processing: boolean;
   total: number;
   current: number;
   stage: string;
+  last_result: ProcessingResult | null;
 }
 
-export function triggerProcess(): Promise<{ ok: boolean; clusters_created?: number; articles_processed?: number }> {
+export function triggerProcess(): Promise<{ ok: boolean; detail?: string }> {
   return apiFetch("/api/digest/process", { method: "POST" });
 }
 

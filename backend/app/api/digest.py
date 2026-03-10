@@ -40,7 +40,7 @@ class ClusterItem(BaseModel):
 
 class DigestResponse(BaseModel):
     clusters: list[ClusterItem]
-    date: str
+    has_more: bool
 
 
 class DigestPatchRequest(BaseModel):
@@ -59,50 +59,60 @@ async def get_processing_status():
     return processing_status.to_dict()
 
 
+def _cluster_to_item(c: Cluster) -> ClusterItem:
+    return ClusterItem(
+        id=str(c.id),
+        digest_date=c.digest_date.isoformat(),
+        title=c.title,
+        headline=c.headline,
+        summary=c.summary,
+        bullets=c.bullets if isinstance(c.bullets, list) else [],
+        quotes=c.quotes if isinstance(c.quotes, list) else [],
+        topic_tags=c.topic_tags or [],
+        source_count=c.source_count,
+        is_merged=c.is_merged,
+        status=c.status,
+        sources=[
+            SourceItem(
+                article_id=str(s.article_id),
+                source_url=s.source_url,
+                source_name=s.source_name,
+                content_type=s.content_type,
+                extraction_quality=s.article.extraction_quality if s.article else "ok",
+                image_url=s.image_url,
+            )
+            for s in c.sources
+        ],
+    )
+
+
 @router.get("/api/digests", response_model=DigestResponse)
 async def get_digests(
-    digest_date: str | None = None, db: AsyncSession = Depends(get_db)
+    before_date: str | None = None,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get digest clusters for a given date (defaults to today)."""
-    target_date = date.fromisoformat(digest_date) if digest_date else date.today()
-
-    result = await db.execute(
+    """Get digest clusters, most recent first. Cursor-paginated by date."""
+    query = (
         select(Cluster)
-        .where(Cluster.digest_date == target_date)
         .options(selectinload(Cluster.sources).selectinload(ClusterSource.article))
-        .order_by(Cluster.is_merged.desc(), Cluster.created_at.desc())
+        .order_by(Cluster.digest_date.desc(), Cluster.is_merged.desc(), Cluster.created_at.desc())
+        .limit(limit + 1)  # fetch one extra to detect has_more
     )
-    clusters = result.scalars().all()
+
+    if before_date:
+        query = query.where(Cluster.digest_date < date.fromisoformat(before_date))
+
+    result = await db.execute(query)
+    clusters = list(result.scalars().all())
+
+    has_more = len(clusters) > limit
+    if has_more:
+        clusters = clusters[:limit]
 
     return DigestResponse(
-        date=target_date.isoformat(),
-        clusters=[
-            ClusterItem(
-                id=str(c.id),
-                digest_date=c.digest_date.isoformat(),
-                title=c.title,
-                headline=c.headline,
-                summary=c.summary,
-                bullets=c.bullets if isinstance(c.bullets, list) else [],
-                quotes=c.quotes if isinstance(c.quotes, list) else [],
-                topic_tags=c.topic_tags or [],
-                source_count=c.source_count,
-                is_merged=c.is_merged,
-                status=c.status,
-                sources=[
-                    SourceItem(
-                        article_id=str(s.article_id),
-                        source_url=s.source_url,
-                        source_name=s.source_name,
-                        content_type=s.content_type,
-                        extraction_quality=s.article.extraction_quality if s.article else "ok",
-                        image_url=s.image_url,
-                    )
-                    for s in c.sources
-                ],
-            )
-            for c in clusters
-        ],
+        has_more=has_more,
+        clusters=[_cluster_to_item(c) for c in clusters],
     )
 
 

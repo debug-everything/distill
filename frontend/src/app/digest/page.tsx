@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   BookOpen,
   Check,
-  ChevronLeft,
-  ChevronRight,
   ExternalLink,
   LayoutGrid,
   LayoutList,
@@ -42,12 +40,15 @@ import {
   markClusterDone,
   promoteCluster,
   type DigestCluster,
-  type DigestResponse,
 } from "@/lib/api";
 
 const SUMMARY_CHAR_LIMIT = 200;
 
 function formatDate(dateStr: string) {
+  const today = new Date().toISOString().split("T")[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  if (dateStr === today) return "Today";
+  if (dateStr === yesterday) return "Yesterday";
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
@@ -55,18 +56,11 @@ function formatDate(dateStr: string) {
   });
 }
 
-function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
-}
-
 function clampText(text: string, limit: number): string {
   if (text.length <= limit) return text;
   return text.slice(0, limit).trimEnd() + "…";
 }
 
-/** Get the first available image URL from a cluster's sources. */
 function getClusterImage(cluster: DigestCluster): string | null {
   for (const source of cluster.sources) {
     if (source.image_url) return source.image_url;
@@ -80,6 +74,20 @@ function hasVideoSource(cluster: DigestCluster): boolean {
 
 function hasAutoTranscript(cluster: DigestCluster): boolean {
   return cluster.sources.some((s) => s.extraction_quality === "auto-transcript");
+}
+
+/** Group clusters by digest_date, preserving order. */
+function groupByDate(clusters: DigestCluster[]): { date: string; clusters: DigestCluster[] }[] {
+  const groups: { date: string; clusters: DigestCluster[] }[] = [];
+  for (const cluster of clusters) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === cluster.digest_date) {
+      last.clusters.push(cluster);
+    } else {
+      groups.push({ date: cluster.digest_date, clusters: [cluster] });
+    }
+  }
+  return groups;
 }
 
 // ----- Tile components per format -----
@@ -296,12 +304,7 @@ const LAYOUT_OPTIONS: { value: TileLayout; icon: typeof LayoutList; label: strin
 // ----- Main page -----
 
 export default function DigestPage() {
-  const [selectedDate, setSelectedDate] = useState(
-    () => new Date().toISOString().split("T")[0]
-  );
-  const [selectedCluster, setSelectedCluster] = useState<DigestCluster | null>(
-    null
-  );
+  const [selectedCluster, setSelectedCluster] = useState<DigestCluster | null>(null);
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
@@ -315,9 +318,16 @@ export default function DigestPage() {
   const rf = readingFontClasses[readingFont];
   const ls = lineSpacingClasses[lineSpacing];
 
-  const digest = useQuery<DigestResponse>({
-    queryKey: ["digest", selectedDate],
-    queryFn: () => fetchDigest(selectedDate),
+  const digest = useInfiniteQuery({
+    queryKey: ["digest"],
+    queryFn: ({ pageParam }) => fetchDigest(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.has_more || lastPage.clusters.length === 0) return undefined;
+      // Use the oldest date in this page as cursor for the next
+      const oldestDate = lastPage.clusters[lastPage.clusters.length - 1].digest_date;
+      return oldestDate;
+    },
   });
 
   const done = useMutation({
@@ -336,22 +346,24 @@ export default function DigestPage() {
     },
   });
 
+  // Flatten all pages into a single cluster list
+  const allClusters = digest.data?.pages.flatMap((p) => p.clusters) ?? [];
+
   const allTopics = Array.from(
     new Set(
-      digest.data?.clusters
+      allClusters
         .filter((c) => c.status !== "done")
-        .flatMap((c) => c.topic_tags) ?? []
+        .flatMap((c) => c.topic_tags)
     )
   ).sort();
 
-  const visibleClusters =
-    digest.data?.clusters.filter((c) => {
-      if (c.status === "done") return false;
-      if (activeTopic && !c.topic_tags.includes(activeTopic)) return false;
-      return true;
-    }) ?? [];
+  const visibleClusters = allClusters.filter((c) => {
+    if (c.status === "done") return false;
+    if (activeTopic && !c.topic_tags.includes(activeTopic)) return false;
+    return true;
+  });
 
-  const isToday = selectedDate === new Date().toISOString().split("T")[0];
+  const dateGroups = groupByDate(visibleClusters);
 
   const TileComponent =
     tileFormat === "compact"
@@ -360,7 +372,6 @@ export default function DigestPage() {
         ? MinimalTile
         : DefaultTile;
 
-  // Grid layout only applies on desktop (sm+), and only for default/compact
   const useGrid = tileLayout === "grid";
   const containerClass = useGrid
     ? "grid gap-3 grid-cols-1 sm:grid-cols-2"
@@ -368,31 +379,11 @@ export default function DigestPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Date nav + display controls */}
+      {/* Header + display controls */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-xl font-semibold">
-            {formatDate(selectedDate)} Digest
-          </h1>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
-            disabled={isToday}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <h1 className="text-xl font-semibold">Digest</h1>
 
         <div className="flex items-center gap-1">
-          {/* Format toggles */}
           {FORMAT_OPTIONS.map(({ value, icon: Icon, label }) => (
             <Button
               key={value}
@@ -408,7 +399,6 @@ export default function DigestPage() {
 
           <Separator orientation="vertical" className="mx-1 h-5" />
 
-          {/* Layout toggles — hidden on mobile */}
           <div className="hidden sm:flex sm:items-center sm:gap-1">
             {LAYOUT_OPTIONS.map(({ value, icon: Icon, label }) => (
               <Button
@@ -455,14 +445,15 @@ export default function DigestPage() {
         </div>
       )}
 
-      {/* Clusters */}
+      {/* Loading */}
       {digest.isLoading && (
         <p className={`${ts.body} text-muted-foreground`}>Loading digest...</p>
       )}
 
-      {visibleClusters.length === 0 && !digest.isLoading && (
+      {/* Empty state */}
+      {dateGroups.length === 0 && !digest.isLoading && (
         <p className={`${ts.body} text-muted-foreground`}>
-          No clusters for this date.{" "}
+          No digest clusters yet.{" "}
           <Link href="/" className="underline">
             Add articles
           </Link>{" "}
@@ -470,17 +461,43 @@ export default function DigestPage() {
         </p>
       )}
 
-      <div className={containerClass}>
-        {visibleClusters.map((cluster) => (
-          <TileComponent
-            key={cluster.id}
-            cluster={cluster}
-            onClick={() => setSelectedCluster(cluster)}
-            onDone={() => done.mutate(cluster.id)}
-            ts={ts}
-          />
+      {/* Clusters grouped by date */}
+      <div className="space-y-8">
+        {dateGroups.map((group) => (
+          <section key={group.date}>
+            <h2 className={`mb-3 font-semibold ${ts.body} text-muted-foreground`}>
+              {formatDate(group.date)}
+            </h2>
+            <div className={containerClass}>
+              {group.clusters.map((cluster) => (
+                <TileComponent
+                  key={cluster.id}
+                  cluster={cluster}
+                  onClick={() => setSelectedCluster(cluster)}
+                  onDone={() => done.mutate(cluster.id)}
+                  ts={ts}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
+
+      {/* Load More */}
+      {digest.hasNextPage && (
+        <div className="mt-8 flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => digest.fetchNextPage()}
+            disabled={digest.isFetchingNextPage}
+          >
+            {digest.isFetchingNextPage ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : null}
+            Load More
+          </Button>
+        </div>
+      )}
 
       {/* Reading modal */}
       <Dialog

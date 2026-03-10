@@ -146,7 +146,7 @@ export interface DigestCluster {
 
 export interface DigestResponse {
   clusters: DigestCluster[];
-  date: string;
+  has_more: boolean;
 }
 
 export interface ProcessingResult {
@@ -173,8 +173,8 @@ export function fetchProcessingStatus(): Promise<ProcessingStatus> {
   return apiFetch<ProcessingStatus>("/api/digests/processing-status");
 }
 
-export function fetchDigest(date?: string): Promise<DigestResponse> {
-  const params = date ? `?digest_date=${date}` : "";
+export function fetchDigest(beforeDate?: string): Promise<DigestResponse> {
+  const params = beforeDate ? `?before_date=${beforeDate}` : "";
   return apiFetch<DigestResponse>(`/api/digests${params}`);
 }
 

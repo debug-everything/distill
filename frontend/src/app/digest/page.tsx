@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -38,6 +38,7 @@ import {
 } from "@/lib/settings-store";
 import {
   fetchDigest,
+  fetchFocusedTopics,
   markClusterDone,
   promoteCluster,
   type DigestCluster,
@@ -341,6 +342,12 @@ export default function DigestPage() {
   const rf = readingFontClasses[readingFont];
   const ls = lineSpacingClasses[lineSpacing];
 
+  const focusedTopics = useQuery({
+    queryKey: ["focusedTopics"],
+    queryFn: fetchFocusedTopics,
+  });
+  const focusedSet = new Set(focusedTopics.data?.topics ?? []);
+
   const digest = useInfiniteQuery({
     queryKey: ["digest"],
     queryFn: ({ pageParam }) => fetchDigest(pageParam),
@@ -355,9 +362,37 @@ export default function DigestPage() {
 
   const done = useMutation({
     mutationFn: markClusterDone,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["digest"] });
+    onMutate: async (clusterId) => {
+      // Cancel in-flight fetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ["digest"] });
+
+      const previous = queryClient.getQueryData(["digest"]);
+
+      // Optimistically mark cluster as done (filtered out by visibleClusters)
+      queryClient.setQueryData<typeof digest.data>(["digest"], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            clusters: page.clusters.map((c) =>
+              c.id === clusterId ? { ...c, status: "done" } : c
+            ),
+          })),
+        };
+      });
+
       setSelectedCluster(null);
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      // Roll back on failure
+      if (context?.previous) {
+        queryClient.setQueryData(["digest"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["digest"] });
     },
   });
 
@@ -386,7 +421,16 @@ export default function DigestPage() {
     return true;
   });
 
-  const dateGroups = groupByDate(visibleClusters);
+  // Sort clusters within each date group: focused topic matches float to top
+  const dateGroups = groupByDate(visibleClusters).map((group) => {
+    if (focusedSet.size === 0) return group;
+    const sorted = [...group.clusters].sort((a, b) => {
+      const aScore = a.topic_tags.filter((t) => focusedSet.has(t)).length;
+      const bScore = b.topic_tags.filter((t) => focusedSet.has(t)).length;
+      return bScore - aScore;
+    });
+    return { ...group, clusters: sorted };
+  });
 
   const TileComponent =
     tileFormat === "compact"

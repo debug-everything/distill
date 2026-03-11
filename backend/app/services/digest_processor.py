@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.task_router import embed, summarize, tag_topics, llm_tracker
+from app.core.task_router import embed, summarize, tag_topics, llm_tracker, refresh_focused_topics
 from app.models.database import Article, Cluster, ClusterSource
 from app.services.text_processing import chunk_text, cluster_by_similarity
 
@@ -70,6 +70,9 @@ async def _background_process():
 
 
 async def _run_pipeline(db: AsyncSession) -> dict:
+    # Refresh focused topics so prompts use latest user preferences
+    await refresh_focused_topics()
+
     # Fetch queued consume_later articles
     result = await db.execute(
         select(Article).where(

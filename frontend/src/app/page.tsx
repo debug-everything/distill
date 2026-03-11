@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useSettings, textSizeClasses } from "@/lib/settings-store";
+import { FocusedTopics } from "@/components/focused-topics";
 import { StatsCard } from "@/components/stats-card";
 import {
   captureUrl,
@@ -330,6 +331,11 @@ export default function Home() {
           Indexing failed: {learnNowResult.detail}
         </p>
       )}
+
+      <Separator className="my-8" />
+
+      {/* Focused Topics */}
+      <FocusedTopics />
 
       <Separator className="my-8" />
 

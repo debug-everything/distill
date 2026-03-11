@@ -6,7 +6,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.task_router import embed, rag_answer, llm_tracker
+from app.core.task_router import embed, rag_answer, llm_tracker, refresh_focused_topics
 from app.models.database import Embedding, KnowledgeItem
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
         return QueryResponse(ok=False, answer="Please provide a question.", sources=[], related_questions=[])
 
     llm_tracker.reset()
+    await refresh_focused_topics()
 
     # Embed the question
     question_embedding = (await embed([req.question]))[0]

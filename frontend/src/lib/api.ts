@@ -244,6 +244,22 @@ export function fetchKB(offset = 0, limit = 10): Promise<KBListResponse> {
   return apiFetch<KBListResponse>(`/api/knowledge?offset=${offset}&limit=${limit}`);
 }
 
+// Focused Topics (Settings)
+export interface FocusedTopicsResponse {
+  topics: string[];
+}
+
+export function fetchFocusedTopics(): Promise<FocusedTopicsResponse> {
+  return apiFetch<FocusedTopicsResponse>("/api/settings/focused-topics");
+}
+
+export function updateFocusedTopics(topics: string[]): Promise<FocusedTopicsResponse> {
+  return apiFetch<FocusedTopicsResponse>("/api/settings/focused-topics", {
+    method: "PUT",
+    body: JSON.stringify({ topics }),
+  });
+}
+
 // Stats
 export interface StatsTotals {
   total_calls: number;

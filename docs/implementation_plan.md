@@ -146,12 +146,14 @@
   - **Short content guard**: disable expansion when source article is too short to produce a meaningfully deeper summary (tentatively ~500 words min; also auto-disable for `extraction_quality=low` articles)
   - Open question: how many expansion levels? Two (concise → detailed) is probably enough
 
-### Focused Topics
-- User maintains a list of "focused topics" (e.g., "agentic commerce", "US stocks")
-- Summarization prompt weighs these topics more heavily — summaries lean toward user interests
-- Quote extraction also prioritizes focused topics
-- Settings page or inline config for managing the topic list
-- Open question: should focused topics also influence clustering/ordering?
+### Focused Topics — DONE
+- [x] `user_settings` key-value table (JSONB) — stores focused topics as `key="focused_topics"`
+- [x] `GET/PUT /api/settings/focused-topics` — CRUD API with dedup + max 20 validation
+- [x] Prompt injection into `summarize()`, `tag_topics()`, `rag_answer()` — zero extra LLM cost
+- [x] In-memory cache refreshed at pipeline start + RAG query time
+- [x] Digest page: clusters matching focused topics float to top within each date group (client-side sort)
+- [x] Frontend: FocusedTopics component on capture page with add/remove topic pills
+- Not doing: no influence on clustering, no per-topic weighting, no Learn Now prompt changes
 
 ### Content Evaluation Scores (configurable, off by default)
 - Toggle per-article LLM evaluation during digest processing

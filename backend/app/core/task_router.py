@@ -16,6 +16,35 @@ from app.core.usage_tracker import record_usage
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Focused topics cache — refreshed at each pipeline run
+# ---------------------------------------------------------------------------
+
+_focused_topics_cache: list[str] = []
+
+
+async def refresh_focused_topics():
+    """Reload focused topics from DB into memory. Call at pipeline start."""
+    global _focused_topics_cache
+    from app.core.database import async_session
+    from app.models.database import UserSetting
+    from sqlalchemy import select
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(UserSetting).where(UserSetting.key == "focused_topics")
+        )
+        row = result.scalar_one_or_none()
+        _focused_topics_cache = row.value if row else []
+    logger.info(f"Focused topics cache: {_focused_topics_cache}")
+
+
+def _get_focused_topics_prompt() -> str:
+    """Return the focused topics as a comma-separated string, or empty string."""
+    if not _focused_topics_cache:
+        return ""
+    return ", ".join(_focused_topics_cache)
+
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
 
@@ -182,13 +211,20 @@ async def summarize(text: str, content_type: str = "article") -> dict:
     use_local = await _should_use_local("heavy")
 
     system_prompt = "You are a concise news summarizer. Output valid JSON only."
+    topics_hint = _get_focused_topics_prompt()
+    topics_section = (
+        f"\n\nThe reader is particularly interested in: {topics_hint}.\n"
+        "When the content relates to these topics, provide more detailed bullets and highlight relevant quotes."
+        if topics_hint else ""
+    )
+
     user_prompt = f"""Summarize the following {content_type} into a structured JSON object with these fields:
 - "headline": A single compelling sentence (max 15 words)
 - "summary": A 2-3 sentence summary
 - "bullets": An array of 3-5 key takeaway bullet points (strings)
 - "quotes": An array of 1-3 notable direct quotes from the text (strings), or empty array if none
 
-Respond ONLY with the JSON object, no markdown formatting.
+Respond ONLY with the JSON object, no markdown formatting.{topics_section}
 
 Text:
 {text[:8000]}"""
@@ -277,8 +313,14 @@ async def tag_topics(text: str) -> list[str]:
     """
     use_local = await _should_use_local("light")
 
+    topics_hint = _get_focused_topics_prompt()
+    also_consider = (
+        f"\nAlso consider these user-specific topics: {topics_hint}"
+        if topics_hint else ""
+    )
+
     prompt = f"""Assign 1-3 topic tags to this content. Choose from common categories like:
-AI & ML, Cloud, DevOps, Security, Business, Programming, Data, Science, Design, Career
+AI & ML, Cloud, DevOps, Security, Business, Programming, Data, Science, Design, Career{also_consider}
 
 Respond with ONLY a JSON array of strings, e.g. ["AI & ML", "Cloud"]
 
@@ -322,9 +364,16 @@ async def rag_answer(question: str, context_chunks: list[str]) -> dict:
         [f"[Source {i+1}]: {chunk}" for i, chunk in enumerate(context_chunks)]
     )
 
-    system_prompt = """You are a helpful knowledge assistant. Answer questions using ONLY the provided sources.
+    topics_hint = _get_focused_topics_prompt()
+    topics_section = (
+        f"\nThe user is particularly interested in: {topics_hint}.\n"
+        "Lean your answer toward these topics when relevant."
+        if topics_hint else ""
+    )
+
+    system_prompt = f"""You are a helpful knowledge assistant. Answer questions using ONLY the provided sources.
 Cite sources using [1], [2], etc. inline. If the sources don't contain relevant information, say so.
-Output valid JSON only."""
+Output valid JSON only.{topics_section}"""
 
     user_prompt = f"""Sources:
 {context}

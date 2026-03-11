@@ -74,7 +74,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                DATA LAYER (Neon Postgres — always-on)                │
 │                                                                      │
-│  articles / clusters / cluster_sources / llm_usage                   │
+│  articles / clusters / cluster_sources / llm_usage / user_settings    │
 │  knowledge_items / embeddings (pgvector 768d HNSW index)             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -296,6 +296,16 @@ CREATE TABLE llm_usage (
 );
 ```
 
+### 5.7 `user_settings` table
+```sql
+CREATE TABLE user_settings (
+  key   TEXT PRIMARY KEY,
+  value JSONB NOT NULL
+);
+-- Single-user key-value store for server-side settings.
+-- Used for: focused_topics (list of user interest topics injected into LLM prompts).
+```
+
 ---
 
 ## 6. Deployment Environments
@@ -329,6 +339,8 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | `POST` | `/api/digests/{id}/promote` | Learn this → embed cluster to KB |
 | `POST` | `/api/knowledge/query` | RAG natural language query |
 | `GET` | `/api/knowledge` | List knowledge base items |
+| `GET` | `/api/settings/focused-topics` | Get user's focused topics list |
+| `PUT` | `/api/settings/focused-topics` | Set user's focused topics list (max 20) |
 | `GET` | `/api/stats` | LLM usage stats (costs, tokens, calls) |
 | `GET` | `/api/llm-status` | Current LLM provider status (local/cloud, active) |
 

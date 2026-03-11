@@ -35,12 +35,14 @@
 │  GET   /api/articles                — List articles by mode/status            │
 │  GET   /api/articles/indexing-status — Learn Now progress                     │
 │  POST  /api/digests/process         — Trigger on-demand digest processing     │
-│  GET   /api/digests?date=           — Get clusters for a date                 │
+│  GET   /api/digests?before_date=    — Get clusters (cursor-paginated)         │
 │  GET   /api/digests/processing-status — Digest processing progress            │
 │  PATCH /api/digests/{id}            — Update cluster status (done, etc.)      │
 │  POST  /api/digests/{id}/promote    — Learn this → embed to KB               │
 │  POST  /api/knowledge/query         — RAG natural language query              │
 │  GET   /api/knowledge               — List knowledge base items              │
+│  GET   /api/stats                   — LLM usage stats (costs, tokens, calls) │
+│  GET   /api/llm-status              — Current LLM provider status            │
 │  GET  /health             — Health check                             │
 │                                                                      │
 │    ┌─────────────────────────────┐                                   │
@@ -72,7 +74,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                DATA LAYER (Neon Postgres — always-on)                │
 │                                                                      │
-│  articles / clusters / cluster_sources                               │
+│  articles / clusters / cluster_sources / llm_usage                   │
 │  knowledge_items / embeddings (pgvector 768d HNSW index)             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -280,6 +282,20 @@ CREATE INDEX ON embeddings
   WITH (m = 16, ef_construction = 64);
 ```
 
+### 5.6 `llm_usage` table
+```sql
+CREATE TABLE llm_usage (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_type     TEXT NOT NULL,      -- embed, summarize, tag_topics, score_quality, rag_answer
+  model         TEXT NOT NULL,      -- e.g. ollama/qwen2.5:14b, gpt-4o-mini
+  provider      TEXT NOT NULL,      -- local | cloud
+  input_tokens  INT NOT NULL DEFAULT 0,
+  output_tokens INT NOT NULL DEFAULT 0,
+  cost_usd      FLOAT NOT NULL DEFAULT 0.0,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+```
+
 ---
 
 ## 6. Deployment Environments
@@ -307,12 +323,14 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | `GET` | `/api/articles` | List articles split by mode (consume_later / learn_now) |
 | `GET` | `/api/articles/indexing-status` | Learn Now processing progress |
 | `POST` | `/api/digests/process` | Trigger on-demand digest processing |
-| `GET` | `/api/digests?date=` | Get clusters for a date (defaults to today) |
+| `GET` | `/api/digests?before_date=` | Get clusters, cursor-paginated (most recent first) |
 | `GET` | `/api/digests/processing-status` | Digest processing progress |
 | `PATCH` | `/api/digests/{id}` | Update cluster status (done, unread) |
 | `POST` | `/api/digests/{id}/promote` | Learn this → embed cluster to KB |
 | `POST` | `/api/knowledge/query` | RAG natural language query |
 | `GET` | `/api/knowledge` | List knowledge base items |
+| `GET` | `/api/stats` | LLM usage stats (costs, tokens, calls) |
+| `GET` | `/api/llm-status` | Current LLM provider status (local/cloud, active) |
 
 ---
 

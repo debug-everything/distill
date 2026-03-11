@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
+  AlertTriangle,
   BookOpen,
   Check,
   ExternalLink,
@@ -76,6 +77,10 @@ function hasAutoTranscript(cluster: DigestCluster): boolean {
   return cluster.sources.some((s) => s.extraction_quality === "auto-transcript");
 }
 
+function hasPaywall(cluster: DigestCluster): boolean {
+  return cluster.sources.some((s) => s.extraction_quality === "low");
+}
+
 /** Group clusters by digest_date, preserving order. */
 function groupByDate(clusters: DigestCluster[]): { date: string; clusters: DigestCluster[] }[] {
   const groups: { date: string; clusters: DigestCluster[] }[] = [];
@@ -134,6 +139,12 @@ function DefaultTile({
               {hasAutoTranscript(cluster) && (
                 <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
                   Auto-transcript
+                </Badge>
+              )}
+              {hasPaywall(cluster) && (
+                <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
+                  <AlertTriangle className="mr-1 h-3 w-3" />
+                  Paywall
                 </Badge>
               )}
             </div>
@@ -222,6 +233,12 @@ function CompactTile({
                 Auto-transcript
               </Badge>
             )}
+            {hasPaywall(cluster) && (
+              <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
+                <AlertTriangle className="mr-1 h-3 w-3" />
+                Paywall
+              </Badge>
+            )}
           </div>
           <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
         </div>
@@ -273,6 +290,12 @@ function MinimalTile({
             {hasAutoTranscript(cluster) && (
               <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
                 Auto-transcript
+              </Badge>
+            )}
+            {hasPaywall(cluster) && (
+              <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
+                <AlertTriangle className="mr-1 h-3 w-3" />
+                Paywall
               </Badge>
             )}
           </div>
@@ -596,6 +619,12 @@ export default function DigestPage() {
                           {source.extraction_quality === "auto-transcript" && (
                             <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
                               Auto-transcript
+                            </Badge>
+                          )}
+                          {source.extraction_quality === "low" && (
+                            <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-600">
+                              <AlertTriangle className="mr-1 h-3 w-3" />
+                              Paywall
                             </Badge>
                           )}
                         </div>

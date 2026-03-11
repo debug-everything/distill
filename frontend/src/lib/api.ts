@@ -237,8 +237,56 @@ export interface KBItem {
 export interface KBListResponse {
   items: KBItem[];
   total: number;
+  topics: string[];
 }
 
-export function fetchKB(): Promise<KBListResponse> {
-  return apiFetch<KBListResponse>("/api/knowledge");
+export function fetchKB(offset = 0, limit = 10): Promise<KBListResponse> {
+  return apiFetch<KBListResponse>(`/api/knowledge?offset=${offset}&limit=${limit}`);
+}
+
+// Stats
+export interface StatsTotals {
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  local_calls: number;
+  cloud_calls: number;
+}
+
+export interface StatsTaskBreakdown {
+  task_type: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface StatsDailyEntry {
+  date: string;
+  calls: number;
+  cost_usd: number;
+  local_calls: number;
+  cloud_calls: number;
+}
+
+export interface StatsRecentCall {
+  task_type: string;
+  model: string;
+  provider: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+export interface StatsResponse {
+  totals: StatsTotals;
+  by_task: StatsTaskBreakdown[];
+  daily: StatsDailyEntry[];
+  recent: StatsRecentCall[];
+}
+
+export function fetchStats(): Promise<StatsResponse> {
+  return apiFetch<StatsResponse>("/api/stats");
 }

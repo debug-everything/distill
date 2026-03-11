@@ -12,7 +12,7 @@
 | 0 | Foundation | DONE | Repo, DB, Ollama verified, task router, scaffolds running |
 | 1 | Consume Later Pipeline | MOSTLY DONE | URL capture → on-demand/batch process → digest dashboard |
 | 2 | Learn Now + RAG | DONE | Learn Now direct-to-KB, Learn This promotion, RAG query |
-| 3 | Polish | NOT STARTED | Quality gate, snooze, cost tracking, loading states |
+| 3 | Polish | IN PROGRESS | Quality gate, snooze, cost tracking, loading states |
 | 4 | YouTube Support | DONE | Video transcript extraction in both modes |
 | 5 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
 
@@ -96,12 +96,12 @@
 
 ---
 
-## Phase 3 — Polish — NOT STARTED
-- [ ] Quality gate: score_quality < 7 → cloud re-route
-- [ ] Snooze 1 day on digest clusters
-- [ ] Cost tracker: log LLM usage per call → `/api/stats`
-- [ ] Paywall warning badge
-- [ ] Loading states for all async ops
+## Phase 3 — Polish — IN PROGRESS
+- [ ] Quality gate: score_quality < 7 → cloud re-route (deferred)
+- [ ] Snooze 1 day on digest clusters (deferred)
+- [x] Cost tracker: `llm_usage` table, in-memory buffer with 60s flush, `GET /api/stats` with totals/by-task/daily/recent aggregations, collapsible StatsCard on capture page
+- [x] Paywall warning badge on digest tiles + modal sources (reuses `extraction_quality=low`)
+- [x] Loading states: skeleton cards on Knowledge page, spinners on all buttons/mutations, progress bars on digest/learn-now processing
 
 ---
 
@@ -178,6 +178,12 @@
   2. **In-app chat**: Use OpenAI/Anthropic API directly within Distill to continue the conversation (adds cost, but keeps context in-app).
   3. **Perplexity search link**: Open `perplexity.ai/search?q={encoded question about topic}` — loses full context but good for research follow-up.
 - Open question: which approach best fits the workflow? Could offer multiple ("Copy context" + "Ask in Distill" + "Search Perplexity").
+
+### Knowledge Base — Smart Sorting
+- Current: sorted by `created_at` desc (most recent first)
+- **"Most queried" sorting**: Track which KB articles appear most frequently in RAG query results, sort by relevance/usage
+- Could also weight by recency + query frequency for a blended sort
+- Requires logging which `knowledge_item_id`s are returned per RAG query (could piggyback on `llm_usage` or a separate table)
 
 ---
 

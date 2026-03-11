@@ -12,6 +12,7 @@ import httpx
 import litellm
 
 from app.core.config import settings
+from app.core.usage_tracker import record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +153,7 @@ async def embed(texts: list[str]) -> list[list[float]]:
                 api_base=settings.ollama_base_url,
             )
             llm_tracker.record(is_local=True)
+            record_usage(response, "embed", model, is_local=True)
             return [item["embedding"] for item in response.data]
         except Exception as e:
             logger.warning(f"embed: local model failed ({e}), falling back to cloud")
@@ -166,6 +168,7 @@ async def embed(texts: list[str]) -> list[list[float]]:
         dimensions=settings.embed_dimensions,
     )
     llm_tracker.record(is_local=False)
+    record_usage(response, "embed", settings.cloud_embed_model, is_local=False)
     return [item["embedding"] for item in response.data]
 
 
@@ -205,6 +208,7 @@ Text:
                 response_format={"type": "json_object"},
             )
             llm_tracker.record(is_local=True)
+            record_usage(response, "summarize", model, is_local=True)
             return json.loads(response.choices[0].message.content)
         except Exception as e:
             logger.warning(f"summarize: local model failed ({e}), falling back to cloud")
@@ -223,6 +227,7 @@ Text:
         response_format={"type": "json_object"},
     )
     llm_tracker.record(is_local=False)
+    record_usage(response, "summarize", model, is_local=False)
     return json.loads(response.choices[0].message.content)
 
 
@@ -255,6 +260,7 @@ Summary:
             **kwargs,
         )
         llm_tracker.record(is_local=use_local)
+        record_usage(response, "score_quality", model, is_local=use_local)
         score_str = response.choices[0].message.content.strip()
         return max(1, min(10, int(score_str)))
     except (ValueError, Exception) as e:
@@ -292,6 +298,7 @@ Text:
             **kwargs,
         )
         llm_tracker.record(is_local=use_local)
+        record_usage(response, "tag_topics", model, is_local=use_local)
         content = response.choices[0].message.content.strip()
         # Handle potential markdown wrapping
         if content.startswith("```"):
@@ -346,4 +353,5 @@ Respond with a JSON object:
         **kwargs,
     )
     llm_tracker.record(is_local=use_local)
+    record_usage(response, "rag_answer", model, is_local=use_local)
     return json.loads(response.choices[0].message.content)

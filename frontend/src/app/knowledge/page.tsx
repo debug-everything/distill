@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const KB_PAGE_SIZE = 10;
 import {
   useSettings,
   textSizeClasses,
@@ -29,6 +32,8 @@ import {
 
 export default function KnowledgePage() {
   const [question, setQuestion] = useState("");
+  const [activeTopic, setActiveTopic] = useState<string | null>(null);
+  const [kbOffset, setKbOffset] = useState(0);
   const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
   const readingFont = useSettings((s) => s.readingFont);
@@ -38,8 +43,8 @@ export default function KnowledgePage() {
   const ls = lineSpacingClasses[lineSpacing];
 
   const kb = useQuery<KBListResponse>({
-    queryKey: ["kb"],
-    queryFn: fetchKB,
+    queryKey: ["kb", kbOffset],
+    queryFn: () => fetchKB(kbOffset, KB_PAGE_SIZE),
   });
 
   const ask = useMutation({
@@ -217,11 +222,48 @@ export default function KnowledgePage() {
           )}
         </h2>
 
-        {kb.isLoading && (
-          <p className={`${ts.small} text-muted-foreground`}>Loading...</p>
+        {/* Topic filter pills */}
+        {kb.data && kb.data.topics.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Badge
+              variant={activeTopic === null ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() => setActiveTopic(null)}
+            >
+              All
+            </Badge>
+            {kb.data.topics.map((topic) => (
+              <Badge
+                key={topic}
+                variant={activeTopic === topic ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() => setActiveTopic(activeTopic === topic ? null : topic)}
+              >
+                {topic}
+              </Badge>
+            ))}
+          </div>
         )}
 
-        {kb.data && kb.data.items.length === 0 && (
+        {kb.isLoading && (
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {kb.data && kb.data.total === 0 && (
           <p className={`${ts.body} text-muted-foreground`}>
             No articles indexed yet. Use &quot;Learn Now&quot; when capturing or
             &quot;Learn This&quot; from the digest to add articles to your
@@ -230,41 +272,72 @@ export default function KnowledgePage() {
         )}
 
         {kb.data && kb.data.items.length > 0 && (
-          <div className="space-y-2">
-            {kb.data.items.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className={`font-medium ${ts.body}`}>{item.title}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {item.topic_tags.map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="outline"
-                          className="text-xs"
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                      <span className="text-xs text-muted-foreground">
-                        {item.chunk_count} chunks
-                      </span>
+          <>
+            <div className="space-y-2">
+              {kb.data.items
+                .filter((item) => !activeTopic || item.topic_tags.includes(activeTopic))
+                .map((item) => (
+                <Card key={item.id}>
+                  <CardContent className="flex items-center gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className={`font-medium ${ts.body}`}>{item.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {item.topic_tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                        <span className="text-xs text-muted-foreground">
+                          {item.chunk_count} chunks
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  {item.url && (
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    {item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <div className="mt-4 flex items-center justify-between">
+              <span className={`${ts.small} text-muted-foreground`}>
+                Showing {kbOffset + 1}–{Math.min(kbOffset + KB_PAGE_SIZE, kb.data.total)} of {kb.data.total}
+              </span>
+              <div className="flex gap-2">
+                {kbOffset > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setKbOffset(Math.max(0, kbOffset - KB_PAGE_SIZE))}
+                  >
+                    Previous
+                  </Button>
+                )}
+                {kbOffset + KB_PAGE_SIZE < kb.data.total && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setKbOffset(kbOffset + KB_PAGE_SIZE)}
+                  >
+                    Load More
+                  </Button>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </section>
     </div>

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useSettings, textSizeClasses } from "@/lib/settings-store";
+import { StatsCard } from "@/components/stats-card";
 import {
   captureUrl,
   captureBatch,
@@ -41,6 +42,12 @@ function formatElapsed(seconds: number): string {
 
 export default function Home() {
   const [input, setInput] = useState("");
+
+  // Bookmarklet support: pre-fill from ?url= query param
+  useEffect(() => {
+    const url = new URLSearchParams(window.location.search).get("url");
+    if (url) setInput(url);
+  }, []);
   const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
   const ts = textSizeClasses[textSize];
@@ -454,6 +461,10 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      <Separator className="my-8" />
+
+      <StatsCard />
     </div>
   );
 }

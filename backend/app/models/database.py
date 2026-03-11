@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     Text,
@@ -102,6 +103,21 @@ class KnowledgeItem(Base):
     embeddings: Mapped[list["Embedding"]] = relationship(
         back_populates="knowledge_item", cascade="all, delete-orphan"
     )
+
+
+class LLMUsage(Base):
+    __tablename__ = "llm_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    task_type: Mapped[str] = mapped_column(Text, nullable=False)  # embed, summarize, tag_topics, score_quality, rag_answer
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)  # local | cloud
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Embedding(Base):

@@ -119,33 +119,52 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
         )
 
 
-@router.get("/api/knowledge", response_model=KBListResponse)
-async def list_kb(db: AsyncSession = Depends(get_db)):
-    """List all knowledge base items with chunk counts."""
+@router.get("/api/knowledge")
+async def list_kb(
+    offset: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """List knowledge base items with chunk counts, paginated."""
     chunk_count_sq = (
         select(Embedding.knowledge_item_id, func.count(1).label("chunk_count"))
         .group_by(Embedding.knowledge_item_id)
         .subquery()
     )
+
+    # Total count
+    total_result = await db.execute(select(func.count(1)).select_from(KnowledgeItem))
+    total = total_result.scalar() or 0
+
+    # All unique topic tags (for filter pills)
+    tags_result = await db.execute(
+        select(func.unnest(KnowledgeItem.topic_tags)).distinct()
+    )
+    all_topics = sorted([row[0] for row in tags_result.all() if row[0]])
+
+    # Paginated items
     result = await db.execute(
         select(KnowledgeItem, func.coalesce(chunk_count_sq.c.chunk_count, 0).label("chunk_count"))
         .outerjoin(chunk_count_sq, KnowledgeItem.id == chunk_count_sq.c.knowledge_item_id)
         .order_by(KnowledgeItem.created_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
     rows = result.all()
 
-    return KBListResponse(
-        total=len(rows),
-        items=[
-            KBItem(
-                id=str(ki.id),
-                title=ki.title,
-                url=ki.url,
-                source_type=ki.source_type,
-                topic_tags=ki.topic_tags or [],
-                created_at=ki.created_at.isoformat(),
-                chunk_count=chunk_count,
-            )
+    return {
+        "total": total,
+        "topics": all_topics,
+        "items": [
+            {
+                "id": str(ki.id),
+                "title": ki.title,
+                "url": ki.url,
+                "source_type": ki.source_type,
+                "topic_tags": ki.topic_tags or [],
+                "created_at": ki.created_at.isoformat(),
+                "chunk_count": chunk_count,
+            }
             for ki, chunk_count in rows
         ],
-    )
+    }

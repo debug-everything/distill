@@ -4,10 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
+  AlertTriangle,
   BookOpen,
   Check,
   ExternalLink,
-  AlertTriangle,
   Loader2,
   Play,
   Video,
@@ -183,7 +183,7 @@ export default function Home() {
   const learnNowResult = learnNowStatus.data?.last_result;
 
   const consumeLater = queue.data?.consume_later;
-  const learnNow = queue.data?.learn_now;
+
 
   return (
     <div className="min-h-screen">
@@ -288,122 +288,41 @@ export default function Home() {
         )}
       </section>
 
-      <Separator className="my-8" />
-
-      {/* Learn Now section */}
-      <section>
-        <h2 className={`mb-4 font-medium ${ts.heading}`}>
-          Learn Now{" "}
-          {learnNow && (
-            <span className="text-muted-foreground">
-              ({learnNow.total})
-            </span>
-          )}
-        </h2>
-
-        {/* Learn Now processing status */}
-        {isLearnNowProcessing && learnNowStatus.data?.stage && (
-          <div className="mb-4 rounded-md border bg-muted/50 p-4">
-            <p className={ts.small}>
-              {learnNowStatus.data.stage}
-              {learnNowElapsed > 0 && (
-                <span className="ml-2 text-muted-foreground">({formatElapsed(learnNowElapsed)})</span>
-              )}
-            </p>
-            {learnNowStatus.data.total > 0 && (
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-primary transition-all"
-                  style={{
-                    width: `${(learnNowStatus.data.current / learnNowStatus.data.total) * 100}%`,
-                  }}
-                />
-              </div>
+      {/* Learn Now transient status (shown inline below capture form) */}
+      {isLearnNowProcessing && learnNowStatus.data?.stage && (
+        <div className="mt-4 rounded-md border bg-muted/50 p-4">
+          <p className={ts.small}>
+            {learnNowStatus.data.stage}
+            {learnNowElapsed > 0 && (
+              <span className="ml-2 text-muted-foreground">({formatElapsed(learnNowElapsed)})</span>
             )}
-          </div>
-        )}
-
-        {/* Learn Now result */}
-        {learnNowResult && !isLearnNowProcessing && learnNowResult.ok && (
-          <p className={`mb-4 ${ts.small} text-green-600`}>
-            Indexed {learnNowResult.indexed} article{learnNowResult.indexed !== 1 ? "s" : ""} to knowledge base
-            {learnNowElapsed > 0 && ` in ${formatElapsed(learnNowElapsed)}`}.{" "}
-            <Link href="/knowledge" className="underline">
-              View knowledge base
-            </Link>
           </p>
-        )}
-        {learnNowResult && !isLearnNowProcessing && !learnNowResult.ok && (
-          <p className={`mb-4 ${ts.small} text-destructive`}>
-            Indexing failed: {learnNowResult.detail}
-          </p>
-        )}
-
-        {learnNow && learnNow.items.length === 0 && !isLearnNowProcessing && (
-          <p className={`${ts.body} text-muted-foreground`}>
-            No recent Learn Now articles.
-          </p>
-        )}
-
-        {learnNow && learnNow.items.length > 0 && (
-          <div className="space-y-2">
-            {learnNow.items.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="flex items-center gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate font-medium ${ts.body}`}>
-                      {item.title || item.url}
-                    </p>
-                    <p className={`${ts.small} text-muted-foreground`}>
-                      {item.source_domain}
-                    </p>
-                  </div>
-                  {item.content_type === "video" && (
-                    <Badge variant="outline" className="shrink-0">
-                      <Video className="mr-1 h-3 w-3" />
-                      Video
-                    </Badge>
-                  )}
-                  {item.extraction_quality === "auto-transcript" && (
-                    <Badge
-                      variant="outline"
-                      className="shrink-0 border-amber-300 text-amber-600"
-                    >
-                      Auto-transcript
-                    </Badge>
-                  )}
-                  {item.status === "indexing" && (
-                    <Badge variant="outline" className="shrink-0">
-                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      Indexing
-                    </Badge>
-                  )}
-                  {item.status === "kb_indexed" && (
-                    <Badge variant="secondary" className="shrink-0">
-                      <Check className="mr-1 h-3 w-3" />
-                      Indexed
-                    </Badge>
-                  )}
-                  {item.status === "failed" && (
-                    <Badge variant="outline" className="shrink-0 border-red-300 text-red-600">
-                      <AlertTriangle className="mr-1 h-3 w-3" />
-                      Failed
-                    </Badge>
-                  )}
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
+          {learnNowStatus.data.total > 0 && (
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{
+                  width: `${(learnNowStatus.data.current / learnNowStatus.data.total) * 100}%`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {learnNowResult && !isLearnNowProcessing && learnNowResult.ok && (
+        <p className={`mt-2 ${ts.small} text-green-600`}>
+          Indexed {learnNowResult.indexed} article{learnNowResult.indexed !== 1 ? "s" : ""} to knowledge base
+          {learnNowElapsed > 0 && ` in ${formatElapsed(learnNowElapsed)}`}.{" "}
+          <Link href="/knowledge" className="underline">
+            View knowledge base
+          </Link>
+        </p>
+      )}
+      {learnNowResult && !isLearnNowProcessing && !learnNowResult.ok && (
+        <p className={`mt-2 ${ts.small} text-destructive`}>
+          Indexing failed: {learnNowResult.detail}
+        </p>
+      )}
 
       <Separator className="my-8" />
 

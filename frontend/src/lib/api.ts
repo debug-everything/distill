@@ -243,6 +243,8 @@ export interface KBItem {
   topic_tags: string[];
   created_at: string;
   chunk_count: number;
+  content_type: string;
+  extraction_quality: string;
 }
 
 export interface KBListResponse {

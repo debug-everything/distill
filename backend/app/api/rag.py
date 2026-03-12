@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.task_router import embed, rag_answer, llm_tracker, refresh_focused_topics
-from app.models.database import Embedding, KnowledgeItem
+from app.models.database import Article, Embedding, KnowledgeItem
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -150,10 +150,16 @@ async def list_kb(
     )
     all_topics = sorted([row[0] for row in tags_result.all() if row[0]])
 
-    # Paginated items
+    # Paginated items — join Article for quality signals
     result = await db.execute(
-        select(KnowledgeItem, func.coalesce(chunk_count_sq.c.chunk_count, 0).label("chunk_count"))
+        select(
+            KnowledgeItem,
+            func.coalesce(chunk_count_sq.c.chunk_count, 0).label("chunk_count"),
+            Article.content_type,
+            Article.extraction_quality,
+        )
         .outerjoin(chunk_count_sq, KnowledgeItem.id == chunk_count_sq.c.knowledge_item_id)
+        .outerjoin(Article, KnowledgeItem.source_id == Article.id)
         .order_by(KnowledgeItem.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -172,8 +178,10 @@ async def list_kb(
                 "topic_tags": ki.topic_tags or [],
                 "created_at": ki.created_at.isoformat(),
                 "chunk_count": chunk_count,
+                "content_type": content_type or "article",
+                "extraction_quality": extraction_quality or "ok",
             }
-            for ki, chunk_count in rows
+            for ki, chunk_count, content_type, extraction_quality in rows
         ],
     }
 

@@ -156,8 +156,15 @@ export default function Home() {
       } else {
         setInput("");
         const title = data.title || "Untitled";
-        const paywall = data.extraction_quality === "low" ? " (possible paywall)" : "";
-        toast.success(`Added: ${title}${paywall}`);
+        const isLearnNow = capture.variables?.mode === "learn_now";
+        if (data.extraction_quality === "low" && isLearnNow) {
+          toast.warning(`Indexing "${title}" — possible paywall, content may be limited. Review in Knowledge Base.`, {
+            duration: 8000,
+          });
+        } else {
+          const paywall = data.extraction_quality === "low" ? " (possible paywall)" : "";
+          toast.success(`Added: ${title}${paywall}`);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       if (capture.variables?.mode === "learn_now" && !data.duplicate) {
@@ -178,10 +185,16 @@ export default function Home() {
       const parts = [`Added ${data.added} article${data.added !== 1 ? "s" : ""}`];
       if (data.duplicates > 0) parts.push(`${data.duplicates} duplicate${data.duplicates !== 1 ? "s" : ""} skipped`);
       if (data.failed > 0) parts.push(`${data.failed} failed`);
+      const paywallCount = data.results.filter((r) => r.ok && !r.duplicate && r.extraction_quality === "low").length;
       if (data.failed > 0) {
         toast.warning(parts.join(" · "));
       } else {
         toast.success(parts.join(" · "));
+      }
+      if (paywallCount > 0 && batchCapture.variables?.mode === "learn_now") {
+        toast.warning(`${paywallCount} article${paywallCount !== 1 ? "s" : ""} may have limited content (paywall). Review in Knowledge Base.`, {
+          duration: 8000,
+        });
       }
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       if (batchCapture.variables?.mode === "learn_now" && data.added > 0) {

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   Clock,
   Cloud,
   Copy,
@@ -13,6 +14,7 @@ import {
   Search,
   SendHorizonal,
   Trash2,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -388,6 +390,23 @@ export default function KnowledgePage() {
                     <div className="min-w-0 flex-1">
                       <p className={`font-medium ${ts.body}`}>{item.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {item.content_type === "video" && (
+                          <Badge variant="outline" className="text-xs">
+                            <Video className="mr-1 h-3 w-3" />
+                            Video
+                          </Badge>
+                        )}
+                        {item.extraction_quality === "low" && (
+                          <Badge variant="outline" className="border-amber-300 text-xs text-amber-600">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Paywall
+                          </Badge>
+                        )}
+                        {item.extraction_quality === "auto-transcript" && (
+                          <Badge variant="outline" className="border-amber-300 text-xs text-amber-600">
+                            Auto-transcript
+                          </Badge>
+                        )}
                         {item.topic_tags.map((tag) => (
                           <Badge
                             key={tag}

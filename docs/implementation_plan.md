@@ -198,6 +198,9 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 - Accessible topic filter badges (`role="button"`, `tabIndex`, `aria-pressed`)
 - **Focused Topics placement rethink**: Once topics are configured, the full CRUD UI is rarely needed but the user should still be reminded the feature exists and see what's active. Options: collapse by default showing "Focused Topics (4)" summary line that expands on click; move to a settings page with a subtle indicator on capture page; or a persistent pill strip (read-only) with an "Edit" link. Key tension: not always visible ≠ forgotten.
 - Mobile swipe/touch patterns (swipe-to-dismiss, pull-to-refresh, bottom nav)
+- **KB sort/filter options**: Sort by information density, filter by source type (article/video) and extraction quality. Currently date-only.
+- **KB retrieval usage tracking**: Log which `knowledge_item_id`s surface in RAG queries. Show "never cited" indicator or "last cited" date. Enables smart sorting by relevance/usage. (See also "Knowledge Base — Smart Sorting" in Ideas.)
+- **KB bulk select + delete**: Checkboxes on KB items with "Remove selected" for cleanup sessions.
 
 ---
 

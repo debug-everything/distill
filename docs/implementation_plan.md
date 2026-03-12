@@ -119,7 +119,52 @@
 
 ---
 
-## Phase 5 — PDF/DOCX — NOT STARTED
+## Phase 5 — UX: Flow Clarity & Onboarding — DONE
+
+The core problem: "Read Later", "Learn Now", "Process Now", and "Learn This" are not self-explanatory. Users must already understand the pipeline to use the page correctly.
+
+### 5A — Rename actions with outcome, not mechanism
+Current labels use abstract metaphors. Renamed to describe the destination:
+- [x] "Read Later" → **"Add to Digest Queue"** (says where it goes)
+- [x] "Learn Now" → **"Save to Knowledge Base"** (says where it goes)
+- [x] "Process Now" → **"Generate Digest"** (says what you get)
+- [x] "Learn This" (in digest modal) → **"Save to Knowledge Base"** (consistent)
+- [x] Updated placeholder: "Paste links (articles or YouTube, one per line)…"
+- [x] Updated empty state text to reference new button labels
+
+### 5B — Make the pipeline visible on Capture page
+- [x] "Generate Digest" button surfaces directly below the queue list (prominent dashed-border CTA)
+- [x] Post-capture feedback includes next step: `✓ Added "Title" · 3 in queue · [Generate Digest →]`
+- [x] Queue CTA shows inline flow hint: `3 articles ready · Generate a digest to read summaries`
+- [x] **Auto-redirect after processing**: Navigates to `/digest` on successful completion
+
+### 5C — Move Focused Topics out of the capture→process flow
+- [x] Moved below queue/stats (it's a "settings" concern, rarely changed)
+
+---
+
+## Phase 6 — UX: Digest Polish — NOT STARTED
+
+- [ ] **Differentiated empty states**: "All caught up!" (everything marked done) vs "No digest yet — add articles and process them" (truly empty). Check if any clusters exist including done ones.
+- [ ] **Focused topic badge highlighting**: Matching topic badges use filled variant instead of outline, so users see WHY a cluster ranks higher.
+- [ ] **Stale modal state after "Learn This"**: Update `selectedCluster` from query cache after promote succeeds, so button shows "Learned" immediately.
+
+---
+
+## Phase 7 — UX: Feedback & Loading — NOT STARTED
+
+- [ ] **Skeleton loading on Capture page**: Replace "Loading queue..." text with skeleton cards (copy pattern from Knowledge page).
+- [ ] **Toast-based feedback system**: Replace inline success/error messages with shadcn/ui toasts. Auto-dismiss after ~5s. Covers capture, batch capture, process, promote, and done actions.
+
+---
+
+## Phase 8 — UX: Knowledge Page — NOT STARTED
+
+- [ ] **Conversation history**: Maintain array of Q&A pairs in state. Render as a conversation thread instead of replacing previous answer. Related questions feed into next query naturally.
+
+---
+
+## Phase 9 — PDF/DOCX — NOT STARTED
 - [ ] `scripts/ingest_doc.py` CLI: PyMuPDF / python-docx → chunk → embed → KB
 - [ ] Web upload form alternative
 - [ ] Document sources in RAG results
@@ -127,8 +172,31 @@
 ---
 
 ## Future Phases (not planned in detail)
-- Phase 6: Cloud deployment (Vercel + Render)
-- Phase 7: Browser extension (Learn Now / Read Later buttons)
+- Phase 10: Improved Quote Extraction (pre-extract + LLM select + fallback — see PRD §10)
+- Phase 11: Cloud deployment (Vercel + Render)
+- Phase 12: Browser extension (Learn Now / Read Later buttons)
+
+---
+
+## UX Follow-up (after Phase 5, before backlog)
+- **Tab/toggle mode selection on Capture page**: Replace two equal buttons with a tab that selects mode (Read Later / Learn Now). Context below input changes per mode. Always one primary action button. Bigger structural change but cleanest UX.
+- **Compact queue summary**: Replace full queue item list with `Digest Queue: 5 articles ready · [Generate Digest]` and a "Show all" toggle. Dramatically shortens the page.
+- **Post-capture next-step guidance**: After adding to queue, show count + direct link to generate digest instead of just "Added: [title]"
+- **Input placeholder + microcopy**: Update placeholder to "Paste links (articles or YouTube, one per line)…". Add microcopy: "YouTube links are auto-transcribed."
+- **Button subtitles**: Show destination under button labels (e.g., "Add to Digest Queue — appears in your next digest")
+
+---
+
+## UX Backlog (unprioritized, revisit later)
+- Undo toast on "Done" action (defer actual API call ~5s, show undo option)
+- Keyboard navigation in reading modal (`j`/`k` for prev/next, `d` for done, `l` for learn)
+- Server-side topic filtering on Knowledge page (current client-side filter only applies to loaded page)
+- Badge overload reduction on digest tiles (cap at 3-4 visible, rest in modal)
+- MinimalTile redesign (currently near-identical to CompactTile — make it genuinely stripped down)
+- Queue item removal (no way to delete accidentally added URLs)
+- Accessible topic filter badges (`role="button"`, `tabIndex`, `aria-pressed`)
+- **Focused Topics placement rethink**: Once topics are configured, the full CRUD UI is rarely needed but the user should still be reminded the feature exists and see what's active. Options: collapse by default showing "Focused Topics (4)" summary line that expands on click; move to a settings page with a subtle indicator on capture page; or a persistent pill strip (read-only) with an "Edit" link. Key tension: not always visible ≠ forgotten.
+- Mobile swipe/touch patterns (swipe-to-dismiss, pull-to-refresh, bottom nav)
 
 ---
 

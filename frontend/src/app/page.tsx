@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   BookOpen,
@@ -42,6 +43,7 @@ function formatElapsed(seconds: number): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [input, setInput] = useState("");
 
   // Bookmarklet support: pre-fill from ?url= query param
@@ -97,7 +99,7 @@ export default function Home() {
       // Still processing — update elapsed on each poll tick
       setDigestElapsed(Math.round((Date.now() - digestStartedAt.current) / 1000));
     } else if (prevDigestProcessing.current && !isActive) {
-      // Just finished — capture final elapsed, refresh data, stop polling
+      // Just finished — capture final elapsed, refresh data, stop polling, redirect
       if (digestStartedAt.current) {
         setDigestElapsed(Math.round((Date.now() - digestStartedAt.current) / 1000));
       }
@@ -105,6 +107,10 @@ export default function Home() {
       setDigestPolling(false);
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["digest"] });
+      // Auto-navigate to digest page on successful completion
+      if (digestStatus.data?.last_result?.ok) {
+        router.push("/digest");
+      }
     }
     prevDigestProcessing.current = isActive;
   }, [digestStatus.data?.is_processing, digestStatus.dataUpdatedAt, queryClient]);
@@ -199,7 +205,7 @@ export default function Home() {
       <section>
         <h2 className={`mb-4 font-medium ${ts.heading}`}>Add content</h2>
         <textarea
-          placeholder="Paste article URLs (one per line)..."
+          placeholder="Paste links (articles or YouTube, one per line)…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -227,8 +233,8 @@ export default function Home() {
             ) : (
               <Zap className="mr-1.5 h-4 w-4" />
             )}
-            Learn Now{isMulti ? ` (${urls.length})` : ""}
-          </Button>
+            Save to Knowledge Base{isMulti ? ` (${urls.length})` : ""}
+       </Button>
           <Button
             onClick={() => handleCapture("consume_later")}
             disabled={urls.length === 0 || isBusy}
@@ -239,7 +245,7 @@ export default function Home() {
             ) : (
               <BookOpen className="mr-1.5 h-4 w-4" />
             )}
-            Read Later{isMulti ? ` (${urls.length})` : ""}
+            Add to Digest Queue{isMulti ? ` (${urls.length})` : ""}
           </Button>
         </div>
 
@@ -255,6 +261,19 @@ export default function Home() {
             {capture.data.extraction_quality === "low" && (
               <span className="ml-2 text-amber-600">
                 (possible paywall — limited content)
+              </span>
+            )}
+            {capture.variables?.mode === "consume_later" && consumeLater && (
+              <span className="text-muted-foreground">
+                {" "}· {consumeLater.total + 1} in queue ·{" "}
+                <button
+                  type="button"
+                  className="underline hover:text-foreground"
+                  onClick={() => process.mutate()}
+                  disabled={isDigestProcessing}
+                >
+                  Generate Digest →
+                </button>
               </span>
             )}
           </p>
@@ -334,16 +353,11 @@ export default function Home() {
 
       <Separator className="my-8" />
 
-      {/* Focused Topics */}
-      <FocusedTopics />
-
-      <Separator className="my-8" />
-
-      {/* Read Later Queue */}
+      {/* Digest Queue */}
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className={`font-medium ${ts.heading}`}>
-            Read Later{" "}
+            Digest Queue{" "}
             {consumeLater && (
               <span className="text-muted-foreground">
                 ({consumeLater.total})
@@ -364,7 +378,7 @@ export default function Home() {
             )}
             {isDigestProcessing
               ? `Processing... ${digestElapsed > 0 ? formatElapsed(digestElapsed) : ""}`
-              : "Process Now"}
+              : "Generate Digest"}
           </Button>
         </div>
 
@@ -413,7 +427,7 @@ export default function Home() {
 
         {consumeLater && consumeLater.items.length === 0 && (
           <p className={`${ts.body} text-muted-foreground`}>
-            No articles queued. Paste a URL above and click Read Later.
+            No articles queued. Paste a URL above and click &ldquo;Add to Digest Queue&rdquo;.
           </p>
         )}
 
@@ -464,9 +478,30 @@ export default function Home() {
                 </CardContent>
               </Card>
             ))}
+
+            {/* Prominent Generate Digest CTA below queue */}
+            {!isDigestProcessing && (
+              <div className="mt-4 flex items-center justify-between rounded-md border border-dashed p-4">
+                <p className={`${ts.small} text-muted-foreground`}>
+                  {consumeLater.total} article{consumeLater.total !== 1 ? "s" : ""} ready · Generate a digest to read summaries
+                </p>
+                <Button
+                  onClick={() => process.mutate()}
+                  disabled={isDigestProcessing}
+                >
+                  <Play className="mr-1.5 h-4 w-4" />
+                  Generate Digest
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      <Separator className="my-8" />
+
+      {/* Focused Topics */}
+      <FocusedTopics />
 
       <Separator className="my-8" />
 

@@ -750,7 +750,7 @@ export default function DigestPage() {
                   ) : (
                     <BookOpen className="mr-1.5 h-4 w-4" />
                   )}
-                  {selectedCluster.status === "promoted" ? "Learned" : "Learn This"}
+                  {selectedCluster.status === "promoted" ? "Saved to KB" : "Save to Knowledge Base"}
                 </Button>
                 <Button
                   variant="ghost"

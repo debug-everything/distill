@@ -196,12 +196,19 @@ Instead of prompt-only novelty bias, pass existing KB topic tags or recent chunk
 ### Separate Content Scoring Step
 A dedicated `score_content()` LLM call (separate from `summarize()`) that evaluates information density, content style, and novelty independently. Cleaner separation of concerns, potentially more accurate scoring. Worth experimenting with especially if achievable using local LLM at near-zero cost. Currently, content style and information density are extracted as part of `summarize()` output.
 
-### Improved Quote Extraction
-Re-evaluate how quotes are generated — current prompt extracts 1-3 "notable" quotes. Potential improvements:
-- Bias toward controversial, provocative, or uniquely insightful quotes
-- Include speaker attribution when identifiable
-- Separate interview quotes from author's own statements
-- Consider extracting "key claims" alongside direct quotes
+### Improved Quote Extraction (Option C — pre-extract + fallback)
+Current approach: LLM generates quotes as part of `summarize()` JSON output. Problems: may hallucinate/paraphrase, competing for attention with 6 other fields, format instability.
+
+**Planned approach (3 parts):**
+1. **Structured format**: Change prompt to return `{text, speaker}` objects instead of plain strings. Embrace the format the LLM naturally wants to produce. Update frontend to display speaker attribution.
+2. **Regex pre-extraction**: Before summarization, extract all real quoted text from the article using patterns (`"..."` + attribution like "said X", "according to X"). Pass candidates into the summarize prompt and ask LLM to select the 1-3 most insightful/controversial. Guarantees verbatim accuracy, zero extra LLM cost.
+3. **Fallback for quote-less content**: When regex finds zero candidates (tutorials, opinion pieces, YouTube transcripts), fall back to asking the LLM to extract "key statements" or "key claims" — clearly labeled differently from direct quotes.
+
+**Implementation notes:**
+- Regex extractor goes in a new helper (e.g., `text_processing.py`)
+- Candidate quotes passed as additional context in `summarize()` user_prompt
+- `_normalize_quotes()` in `digest.py` already handles mixed formats
+- Frontend quote tab should show speaker attribution when available
 
 ---
 

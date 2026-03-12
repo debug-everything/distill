@@ -210,7 +210,8 @@ async def summarize(text: str, content_type: str = "article") -> dict:
     """
     use_local = await _should_use_local("heavy")
 
-    system_prompt = "You are a concise news summarizer. Output valid JSON only."
+    system_prompt = """You are an insightful content analyst. You surface what is novel, surprising, or contrarian — not what is commonly known. Output valid JSON only."""
+
     topics_hint = _get_focused_topics_prompt()
     topics_section = (
         f"\n\nThe reader is particularly interested in: {topics_hint}.\n"
@@ -218,11 +219,14 @@ async def summarize(text: str, content_type: str = "article") -> dict:
         if topics_hint else ""
     )
 
-    user_prompt = f"""Summarize the following {content_type} into a structured JSON object with these fields:
+    user_prompt = f"""Analyze the following {content_type} and produce a structured JSON object with these fields:
+
 - "headline": A single compelling sentence (max 15 words)
-- "summary": A 2-3 sentence summary
-- "bullets": An array of 3-5 key takeaway bullet points (strings)
-- "quotes": An array of 1-3 notable direct quotes from the text (strings), or empty array if none
+- "summary": A 2-3 sentence summary emphasizing what is new, surprising, or non-obvious. Skip widely-known background context.
+- "bullets": An array of 3-5 key takeaway bullet points (strings). Prioritize novel insights, counterintuitive findings, and actionable information over commonly understood facts.
+- "quotes": An array of 1-3 notable direct quotes from the text (strings). Prefer controversial, provocative, or uniquely insightful quotes. Include the speaker's name if identifiable. Return empty array if no noteworthy quotes exist.
+- "content_style": Classify the content as ONE of: "tutorial", "demo", "opinion", "interview", "news", "analysis", "narrative", "review". Use "tutorial" for step-by-step teaching, "demo" for hands-on demonstrations or walkthroughs, "opinion" for editorials or hot takes, "interview" for Q&A or conversation format, "news" for factual reporting, "analysis" for deep dives with original research or data, "narrative" for storytelling, "review" for product/tool reviews.
+- "information_density": Rate 1-10 how much substantive, actionable, or novel information is packed into this content. 1 = mostly filler/repetition/common knowledge. 10 = extremely dense with unique data, examples, or demonstrations. Content with code samples, data, step-by-step instructions, or visual demonstrations should score higher.
 
 Respond ONLY with the JSON object, no markdown formatting.{topics_section}
 

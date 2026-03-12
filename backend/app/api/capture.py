@@ -79,6 +79,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
         extraction_quality=result.extraction_quality,
         source_domain=result.source_domain,
         image_url=result.image_url,
+        content_attributes=result.content_attributes,
     )
     db.add(article)
     await db.flush()
@@ -124,6 +125,7 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
         extraction_quality=result.extraction_quality,
         source_domain=result.source_domain,
         image_url=result.image_url,
+        content_attributes=result.content_attributes,
     )
     db.add(article)
     await db.commit()

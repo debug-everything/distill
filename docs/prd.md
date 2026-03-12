@@ -188,7 +188,24 @@ Two capture modes:
 
 ---
 
-## 10. Out-of-Scope References
+## 10. Shelved Ideas (for future re-consideration)
+
+### KB-Aware Novelty Summarization
+Instead of prompt-only novelty bias, pass existing KB topic tags or recent chunk summaries as context to the summarizer. Ask the LLM to explicitly highlight what is *new* relative to the user's existing knowledge. More accurate but adds tokens/cost. Re-evaluate once KB reaches meaningful size.
+
+### Separate Content Scoring Step
+A dedicated `score_content()` LLM call (separate from `summarize()`) that evaluates information density, content style, and novelty independently. Cleaner separation of concerns, potentially more accurate scoring. Worth experimenting with especially if achievable using local LLM at near-zero cost. Currently, content style and information density are extracted as part of `summarize()` output.
+
+### Improved Quote Extraction
+Re-evaluate how quotes are generated — current prompt extracts 1-3 "notable" quotes. Potential improvements:
+- Bias toward controversial, provocative, or uniquely insightful quotes
+- Include speaker attribution when identifiable
+- Separate interview quotes from author's own statements
+- Consider extracting "key claims" alongside direct quotes
+
+---
+
+## 11. Out-of-Scope References
 - See `architecture.md` for system design, data model, and deployment
 - See `tech_stack.md` for library and tooling decisions
 - See `implementation_plan.md` for phased build roadmap

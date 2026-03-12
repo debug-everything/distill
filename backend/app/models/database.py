@@ -39,6 +39,7 @@ class Article(Base):
     extraction_quality: Mapped[str] = mapped_column(Text, default="ok")
     source_domain: Mapped[str | None] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(Text)
+    content_attributes: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -58,6 +59,9 @@ class Cluster(Base):
     bullets: Mapped[dict] = mapped_column(JSONB, nullable=False)
     quotes: Mapped[dict | None] = mapped_column(JSONB)
     topic_tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    content_style: Mapped[str | None] = mapped_column(Text)
+    information_density: Mapped[int | None] = mapped_column(Integer)
+    content_attributes: Mapped[dict | None] = mapped_column(JSONB)
     source_count: Mapped[int] = mapped_column(Integer, default=1)
     is_merged: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(Text, default="unread")

@@ -1,6 +1,7 @@
 """YouTube video extraction via youtube-transcript-api."""
 
 import logging
+import re
 from urllib.parse import parse_qs, urlparse
 
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -10,6 +11,37 @@ from app.services.content_extractor import ExtractionResult
 logger = logging.getLogger(__name__)
 
 _yt_api = YouTubeTranscriptApi()
+
+# Transcript phrases that suggest screen demos, code walkthroughs, visual content
+_DEMO_CUE_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in [
+        r"\bas you can see\b",
+        r"\blet me show\b",
+        r"\bI('|')?ll show\b",
+        r"\bon (?:the |my )?screen\b",
+        r"\bhere (?:we|I|you) (?:can see|have)\b",
+        r"\blet('|')?s (?:look at|take a look|go (?:ahead|through))\b",
+        r"\bswitch(?:ing)? (?:to|over)\b",
+        r"\bopen(?:ing)? up\b",
+        r"\btype (?:in|this)\b",
+        r"\brun (?:this|the)\b",
+        r"\bclick(?:ing)? on\b",
+        r"\bdrag(?:ging)?\b.*\bdrop\b",
+        r"\bcode editor\b",
+        r"\bterminal\b",
+        r"\bbrowser\b",
+        r"\bVS ?Code\b",
+        r"\bcommand line\b",
+        r"\bscreenshot\b",
+    ]
+]
+
+# Description keywords that hint at tutorial/demo content
+_DESCRIPTION_DEMO_KEYWORDS = [
+    "tutorial", "walkthrough", "step by step", "step-by-step", "how to",
+    "demo", "demonstration", "hands-on", "follow along", "code along",
+    "build", "create", "implement", "timestamps", "chapters",
+]
 
 
 def _extract_video_id(url: str) -> str | None:
@@ -29,6 +61,49 @@ def _extract_video_id(url: str) -> str | None:
         return parsed.path.lstrip("/")
 
     return None
+
+
+def _detect_demo_cues(transcript_text: str) -> dict:
+    """Detect visual/demo cues in transcript text using pattern matching.
+
+    Returns dict with cue count and matched patterns for transparency.
+    """
+    matches = []
+    for pattern in _DEMO_CUE_PATTERNS:
+        found = pattern.findall(transcript_text)
+        if found:
+            matches.append({"pattern": pattern.pattern, "count": len(found)})
+
+    total_cues = sum(m["count"] for m in matches)
+    word_count = len(transcript_text.split())
+    # Normalize: cues per 1000 words
+    cue_density = round(total_cues / max(word_count, 1) * 1000, 1)
+
+    return {
+        "has_demo_cues": total_cues >= 3,
+        "demo_cue_count": total_cues,
+        "demo_cue_density": cue_density,  # per 1000 words
+    }
+
+
+def _analyze_description(description: str | None) -> dict:
+    """Analyze video description for content style signals."""
+    if not description:
+        return {"has_description": False}
+
+    desc_lower = description.lower()
+    matched_keywords = [kw for kw in _DESCRIPTION_DEMO_KEYWORDS if kw in desc_lower]
+
+    # Check for timestamps (common in tutorial/structured content)
+    timestamp_pattern = re.compile(r"\d{1,2}:\d{2}")
+    timestamp_count = len(timestamp_pattern.findall(description))
+
+    return {
+        "has_description": True,
+        "description_demo_keywords": matched_keywords,
+        "has_timestamps": timestamp_count >= 3,
+        "timestamp_count": timestamp_count,
+    }
 
 
 async def extract_video(url: str) -> ExtractionResult:
@@ -64,8 +139,8 @@ async def extract_video(url: str) -> ExtractionResult:
         except Exception as e:
             raise ValueError(f"Could not fetch transcript for video {video_id}: {e}")
 
-    # Title via oembed (lightweight, no API key)
-    title = await _fetch_title(url)
+    # Title + description via oembed (lightweight, no API key)
+    title, description = await _fetch_metadata(url)
 
     # Thumbnail: predictable YouTube URL pattern
     image_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
@@ -85,6 +160,20 @@ async def extract_video(url: str) -> ExtractionResult:
             f"auto_gen={is_auto_generated}, words={word_count}"
         )
 
+    # Content attributes: demo detection + description analysis
+    demo_cues = _detect_demo_cues(clean_text)
+    desc_analysis = _analyze_description(description)
+    content_attributes = {
+        **demo_cues,
+        **desc_analysis,
+    }
+
+    logger.info(
+        f"Video {video_id}: demo_cues={demo_cues['demo_cue_count']}, "
+        f"density={demo_cues['demo_cue_density']}/1k words, "
+        f"desc_keywords={desc_analysis.get('description_demo_keywords', [])}"
+    )
+
     return ExtractionResult(
         title=title or f"YouTube Video ({video_id})",
         clean_text=clean_text,
@@ -93,21 +182,38 @@ async def extract_video(url: str) -> ExtractionResult:
         content_type="video",
         extraction_quality=extraction_quality,
         image_url=image_url,
+        content_attributes=content_attributes,
     )
 
 
-async def _fetch_title(url: str) -> str | None:
-    """Fetch video title via YouTube oembed (no API key needed)."""
+async def _fetch_metadata(url: str) -> tuple[str | None, str | None]:
+    """Fetch video title and description via YouTube oembed + page scrape."""
     import httpx
+
+    title = None
+    description = None
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
+            # oembed gives us the title
             resp = await client.get(
                 "https://www.youtube.com/oembed",
                 params={"url": url, "format": "json"},
             )
             if resp.status_code == 200:
-                return resp.json().get("title")
-    except Exception:
-        pass
-    return None
+                title = resp.json().get("title")
+
+            # Scrape description from og:description meta tag (no API key needed)
+            page_resp = await client.get(url)
+            if page_resp.status_code == 200:
+                desc_match = re.search(
+                    r'<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]*)"',
+                    page_resp.text,
+                    re.IGNORECASE,
+                )
+                if desc_match:
+                    description = desc_match.group(1)
+    except Exception as e:
+        logger.warning(f"Failed to fetch video metadata: {e}")
+
+    return title, description

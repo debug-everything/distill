@@ -155,6 +155,18 @@
 - [x] Frontend: FocusedTopics component on capture page with add/remove topic pills
 - Not doing: no influence on clustering, no per-topic weighting, no Learn Now prompt changes
 
+### Summarization Intelligence — DONE
+- [x] Novelty bias: summarize prompt emphasizes surprising/non-obvious insights, skips common knowledge
+- [x] Content style classification: LLM classifies each article as tutorial/demo/opinion/interview/news/analysis/narrative/review (via `summarize()` JSON output, zero extra LLM calls)
+- [x] Information density scoring: LLM rates 1-10 how dense/actionable the content is (via `summarize()` JSON output)
+- [x] Quote extraction improved: prompt biases toward controversial, provocative, uniquely insightful quotes with speaker attribution
+- [x] YouTube demo detection: transcript-level heuristics detect screen demos, code walkthroughs, visual content (no LLM needed)
+- [x] YouTube description analysis: extracts video description metadata, checks for tutorial keywords and timestamps
+- [x] New DB columns: `articles.content_attributes` (JSONB), `clusters.content_style`, `clusters.information_density`, `clusters.content_attributes` (JSONB)
+- [x] Digest tiles show content style badge, density indicator (fire icon for 7+), and "Screen demo" badge for videos
+- [x] Digest sorting uses information_density as secondary sort key (after focused topic match)
+- Shelved: KB-aware novelty (see PRD §10), separate scoring step (see PRD §10), improved quote extraction (see PRD §10)
+
 ### Content Evaluation Scores (configurable, off by default)
 - Toggle per-article LLM evaluation during digest processing
 - **Interest match score**: How well content matches user's focused topics list (ties into Focused Topics feature)

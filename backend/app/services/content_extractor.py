@@ -13,6 +13,7 @@ class ExtractionResult:
     content_type: str  # "article" | "video"
     extraction_quality: str  # "ok" | "low" | "auto-transcript"
     image_url: str | None = None
+    content_attributes: dict | None = None  # e.g. {"has_demo_cues": True, "description": "..."}
 
 
 _YOUTUBE_PATTERNS = [

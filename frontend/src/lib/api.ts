@@ -138,6 +138,9 @@ export interface DigestCluster {
   bullets: string[];
   quotes: string[];
   topic_tags: string[];
+  content_style: string | null;
+  information_density: number | null;
+  content_attributes: Record<string, unknown> | null;
   source_count: number;
   is_merged: boolean;
   status: string;

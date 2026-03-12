@@ -178,6 +178,29 @@ async def _run_pipeline(db: AsyncSession) -> dict:
         for i in cluster_idx_list:
             all_tags.update(topic_tags_list[i])
 
+        # Merge content_attributes from source articles (video demo cues, etc.)
+        merged_attrs = {}
+        for i in cluster_idx_list:
+            attrs = articles[i].content_attributes
+            if attrs:
+                # Aggregate: keep any True flags, max numeric scores
+                for k, v in attrs.items():
+                    if isinstance(v, bool):
+                        merged_attrs[k] = merged_attrs.get(k, False) or v
+                    elif isinstance(v, (int, float)):
+                        merged_attrs[k] = max(merged_attrs.get(k, 0), v)
+                    elif isinstance(v, list):
+                        existing = merged_attrs.get(k, [])
+                        merged_attrs[k] = list(set(existing + v))
+
+        # Extract content_style and information_density from LLM summary
+        content_style = merged_summary.get("content_style")
+        info_density = merged_summary.get("information_density")
+        if isinstance(info_density, (int, float)):
+            info_density = max(1, min(10, int(info_density)))
+        else:
+            info_density = None
+
         cluster = Cluster(
             digest_date=today,
             title=merged_summary.get("headline", "Untitled"),
@@ -186,6 +209,9 @@ async def _run_pipeline(db: AsyncSession) -> dict:
             bullets=merged_summary.get("bullets", []),
             quotes=merged_summary.get("quotes", []),
             topic_tags=list(all_tags),
+            content_style=content_style,
+            information_density=info_density,
+            content_attributes=merged_attrs or None,
             source_count=len(cluster_idx_list),
             is_merged=is_merged,
             status="unread",

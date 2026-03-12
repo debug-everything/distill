@@ -8,6 +8,7 @@ import {
   BookOpen,
   Check,
   ExternalLink,
+  Flame,
   LayoutGrid,
   LayoutList,
   Layers,
@@ -82,6 +83,45 @@ function hasPaywall(cluster: DigestCluster): boolean {
   return cluster.sources.some((s) => s.extraction_quality === "low");
 }
 
+const STYLE_LABELS: Record<string, string> = {
+  tutorial: "Tutorial",
+  demo: "Demo",
+  opinion: "Opinion",
+  interview: "Interview",
+  news: "News",
+  analysis: "Analysis",
+  narrative: "Narrative",
+  review: "Review",
+};
+
+function ContentBadges({ cluster }: { cluster: DigestCluster }) {
+  const style = cluster.content_style;
+  const density = cluster.information_density;
+  const attrs = cluster.content_attributes;
+  const hasDemoCues = attrs?.has_demo_cues === true;
+
+  return (
+    <>
+      {style && STYLE_LABELS[style] && (
+        <Badge variant="outline" className="shrink-0 text-xs">
+          {STYLE_LABELS[style]}
+        </Badge>
+      )}
+      {density != null && density >= 7 && (
+        <Badge variant="outline" className="shrink-0 border-orange-300 text-xs text-orange-600">
+          <Flame className="mr-1 h-3 w-3" />
+          Dense ({density}/10)
+        </Badge>
+      )}
+      {hasDemoCues && (
+        <Badge variant="outline" className="shrink-0 border-blue-300 text-xs text-blue-600">
+          Screen demo
+        </Badge>
+      )}
+    </>
+  );
+}
+
 /** Group clusters by digest_date, preserving order. */
 function groupByDate(clusters: DigestCluster[]): { date: string; clusters: DigestCluster[] }[] {
   const groups: { date: string; clusters: DigestCluster[] }[] = [];
@@ -148,6 +188,7 @@ function DefaultTile({
                   Paywall
                 </Badge>
               )}
+              <ContentBadges cluster={cluster} />
             </div>
             <CardTitle className={ts.heading}>{cluster.title}</CardTitle>
           </CardHeader>
@@ -240,6 +281,7 @@ function CompactTile({
                 Paywall
               </Badge>
             )}
+            <ContentBadges cluster={cluster} />
           </div>
           <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
         </div>
@@ -299,6 +341,7 @@ function MinimalTile({
                 Paywall
               </Badge>
             )}
+            <ContentBadges cluster={cluster} />
           </div>
           <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
         </div>
@@ -421,13 +464,17 @@ export default function DigestPage() {
     return true;
   });
 
-  // Sort clusters within each date group: focused topic matches float to top
+  // Sort clusters within each date group: focused topic matches + information density
   const dateGroups = groupByDate(visibleClusters).map((group) => {
-    if (focusedSet.size === 0) return group;
     const sorted = [...group.clusters].sort((a, b) => {
-      const aScore = a.topic_tags.filter((t) => focusedSet.has(t)).length;
-      const bScore = b.topic_tags.filter((t) => focusedSet.has(t)).length;
-      return bScore - aScore;
+      // Primary: focused topic match count
+      const aTopicScore = a.topic_tags.filter((t) => focusedSet.has(t)).length;
+      const bTopicScore = b.topic_tags.filter((t) => focusedSet.has(t)).length;
+      if (aTopicScore !== bTopicScore) return bTopicScore - aTopicScore;
+      // Secondary: information density (higher = more interesting)
+      const aDensity = a.information_density ?? 0;
+      const bDensity = b.information_density ?? 0;
+      return bDensity - aDensity;
     });
     return { ...group, clusters: sorted };
   });
@@ -589,6 +636,7 @@ export default function DigestPage() {
                       {tag}
                     </Badge>
                   ))}
+                  <ContentBadges cluster={selectedCluster} />
                 </div>
               </DialogHeader>
 

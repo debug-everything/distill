@@ -215,6 +215,7 @@ CREATE TABLE articles (
   status              TEXT NOT NULL DEFAULT 'queued',    -- queued|processing|ready|done|promoted|kb_indexed
   extraction_quality  TEXT DEFAULT 'ok',                 -- 'ok' | 'low'
   source_domain       TEXT,
+  content_attributes  JSONB,                             -- extraction-time metadata (video demo cues, etc.)
   created_at          TIMESTAMPTZ DEFAULT now(),
   processed_at        TIMESTAMPTZ
 );
@@ -231,6 +232,9 @@ CREATE TABLE clusters (
   bullets         JSONB NOT NULL,
   quotes          JSONB,
   topic_tags      TEXT[],
+  content_style   TEXT,                  -- tutorial|demo|opinion|interview|news|analysis|narrative|review
+  information_density INT,              -- 1-10, how dense/actionable the content is
+  content_attributes  JSONB,            -- merged extraction attributes (video demo cues, etc.)
   source_count    INT DEFAULT 1,
   is_merged       BOOLEAN DEFAULT FALSE,
   status          TEXT DEFAULT 'unread',   -- unread | done | promoted | snoozed

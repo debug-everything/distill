@@ -32,6 +32,9 @@ class ClusterItem(BaseModel):
     bullets: list[str]
     quotes: list[str]
     topic_tags: list[str]
+    content_style: str | None = None
+    information_density: int | None = None
+    content_attributes: dict | None = None
     source_count: int
     is_merged: bool
     status: str
@@ -59,6 +62,26 @@ async def get_processing_status():
     return processing_status.to_dict()
 
 
+def _normalize_quotes(quotes) -> list[str]:
+    """Normalize quotes from various LLM output formats to plain strings."""
+    if not isinstance(quotes, list):
+        return []
+    result = []
+    for q in quotes:
+        if isinstance(q, str) and q.strip():
+            result.append(q)
+        elif isinstance(q, dict):
+            # LLM may return {"text": "...", "speaker": "..."} or {"quote": "..."}
+            text = q.get("text") or q.get("quote") or ""
+            speaker = q.get("speaker") or q.get("speaker_name") or ""
+            if text.strip():
+                entry = f'"{text}"' if not text.startswith('"') else text
+                if speaker:
+                    entry += f" — {speaker}"
+                result.append(entry)
+    return result
+
+
 def _cluster_to_item(c: Cluster) -> ClusterItem:
     return ClusterItem(
         id=str(c.id),
@@ -67,8 +90,11 @@ def _cluster_to_item(c: Cluster) -> ClusterItem:
         headline=c.headline,
         summary=c.summary,
         bullets=c.bullets if isinstance(c.bullets, list) else [],
-        quotes=c.quotes if isinstance(c.quotes, list) else [],
+        quotes=_normalize_quotes(c.quotes),
         topic_tags=c.topic_tags or [],
+        content_style=c.content_style,
+        information_density=c.information_density,
+        content_attributes=c.content_attributes,
         source_count=c.source_count,
         is_merged=c.is_merged,
         status=c.status,

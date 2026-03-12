@@ -143,11 +143,13 @@ function DefaultTile({
   onClick,
   onDone,
   ts,
+  focusedSet,
 }: {
   cluster: DigestCluster;
   onClick: () => void;
   onDone: () => void;
   ts: { body: string; small: string; heading: string };
+  focusedSet: Set<string>;
 }) {
   const imageUrl = getClusterImage(cluster);
 
@@ -167,7 +169,7 @@ function DefaultTile({
                 </Badge>
               )}
               {cluster.topic_tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="shrink-0">
+                <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0">
                   {tag}
                 </Badge>
               ))}
@@ -227,11 +229,13 @@ function CompactTile({
   onClick,
   onDone,
   ts,
+  focusedSet,
 }: {
   cluster: DigestCluster;
   onClick: () => void;
   onDone: () => void;
   ts: { body: string; small: string; heading: string };
+  focusedSet: Set<string>;
 }) {
   const imageUrl = getClusterImage(cluster);
 
@@ -255,7 +259,7 @@ function CompactTile({
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             {cluster.topic_tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="shrink-0 text-xs">
+              <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0 text-xs">
                 {tag}
               </Badge>
             ))}
@@ -300,11 +304,13 @@ function MinimalTile({
   onClick,
   onDone,
   ts,
+  focusedSet,
 }: {
   cluster: DigestCluster;
   onClick: () => void;
   onDone: () => void;
   ts: { body: string; small: string; heading: string };
+  focusedSet: Set<string>;
 }) {
   return (
     <Card
@@ -315,7 +321,7 @@ function MinimalTile({
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             {cluster.topic_tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="shrink-0 text-xs">
+              <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0 text-xs">
                 {tag}
               </Badge>
             ))}
@@ -441,7 +447,11 @@ export default function DigestPage() {
 
   const promote = useMutation({
     mutationFn: promoteCluster,
-    onSuccess: () => {
+    onSuccess: (_data, clusterId) => {
+      // Update selectedCluster immediately so modal shows "Saved to KB"
+      setSelectedCluster((prev) =>
+        prev && prev.id === clusterId ? { ...prev, status: "promoted" } : prev
+      );
       queryClient.invalidateQueries({ queryKey: ["digest"] });
       queryClient.invalidateQueries({ queryKey: ["kb"] });
     },
@@ -564,14 +574,19 @@ export default function DigestPage() {
         <p className={`${ts.body} text-muted-foreground`}>Loading digest...</p>
       )}
 
-      {/* Empty state */}
-      {dateGroups.length === 0 && !digest.isLoading && (
+      {/* Empty state — differentiate "all caught up" vs "truly empty" */}
+      {dateGroups.length === 0 && !digest.isLoading && allClusters.length > 0 && (
         <p className={`${ts.body} text-muted-foreground`}>
-          No digest clusters yet.{" "}
+          All caught up! Every cluster has been marked done.
+        </p>
+      )}
+      {dateGroups.length === 0 && !digest.isLoading && allClusters.length === 0 && (
+        <p className={`${ts.body} text-muted-foreground`}>
+          No digest yet.{" "}
           <Link href="/" className="underline">
             Add articles
           </Link>{" "}
-          and process them.
+          and generate a digest to see clusters here.
         </p>
       )}
 
@@ -590,6 +605,7 @@ export default function DigestPage() {
                   onClick={() => setSelectedCluster(cluster)}
                   onDone={() => done.mutate(cluster.id)}
                   ts={ts}
+                  focusedSet={focusedSet}
                 />
               ))}
             </div>
@@ -632,7 +648,7 @@ export default function DigestPage() {
                     </Badge>
                   )}
                   {selectedCluster.topic_tags.map((tag) => (
-                    <Badge key={tag} variant="outline">
+                    <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"}>
                       {tag}
                     </Badge>
                   ))}

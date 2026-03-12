@@ -143,11 +143,11 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
-## Phase 6 — UX: Digest Polish — NOT STARTED
+## Phase 6 — UX: Digest Polish — DONE
 
-- [ ] **Differentiated empty states**: "All caught up!" (everything marked done) vs "No digest yet — add articles and process them" (truly empty). Check if any clusters exist including done ones.
-- [ ] **Focused topic badge highlighting**: Matching topic badges use filled variant instead of outline, so users see WHY a cluster ranks higher.
-- [ ] **Stale modal state after "Learn This"**: Update `selectedCluster` from query cache after promote succeeds, so button shows "Learned" immediately.
+- [x] **Differentiated empty states**: "All caught up!" (everything marked done) vs "No digest yet" (truly empty), checked against `allClusters` which includes done ones.
+- [x] **Focused topic badge highlighting**: Matching topic badges use filled variant (`"default"`) instead of outline on tiles and in modal, so users see WHY a cluster ranks higher.
+- [x] **Stale modal state after "Save to KB"**: `setSelectedCluster` updates status to `"promoted"` immediately on promote success, so button shows "Saved to KB" without waiting for refetch.
 
 ---
 

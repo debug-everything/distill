@@ -28,14 +28,24 @@ make install      # install deps for both
 
 Backend: `cd backend && uv run uvicorn app.main:app --reload`
 Frontend: `cd frontend && pnpm dev`
-Migrations: `cd backend && uv run alembic upgrade head`
+
+### Database
+
+```bash
+make db           # start local pgvector (Docker, port 5432)
+make db-stop      # stop the container
+make db-reset     # destroy volume and start fresh
+make migrate      # run Alembic migrations (alembic upgrade head)
+```
+
+Local Docker and remote Neon are interchangeable — swap the `DATABASE_URL` in `.env`. SSL is auto-enabled only when the URL contains "neon".
 
 ## Key Conventions
 
 - **Package managers**: `uv` for Python, `pnpm` for JS. Never use pip/npm/yarn.
 - **API proxy**: Next.js rewrites `/api/*` and `/health` to FastAPI (localhost:8000). No direct DB access from frontend.
 - **AI calls**: All LLM/embedding calls go through `backend/app/core/task_router.py` via LiteLLM. Ollama local-first, cloud fallback.
-- **DB**: Neon Postgres + pgvector. SSL via `truststore` (injected at top of `main.py`). Alembic for migrations.
+- **DB**: Postgres + pgvector. Local Docker (`pgvector/pgvector:pg17`) or remote Neon — configured via `DATABASE_URL` in `.env`. SSL auto-enabled for Neon. Alembic for migrations.
 - **Settings**: Client-side preferences (theme, text size, tile format/layout) in Zustand with `persist` middleware.
 - **Long-running tasks**: Process endpoints return immediately, work runs in background asyncio tasks. Frontend polls status.
 - **Design Philosophy**: Avoid bloated and code duplications. Favor known design patterns, DRY, low-coupling and high-cohesion.

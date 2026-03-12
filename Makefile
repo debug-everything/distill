@@ -1,4 +1,4 @@
-.PHONY: dev dev-backend dev-frontend install kill restart
+.PHONY: dev dev-backend dev-frontend install kill restart db db-stop db-reset migrate
 
 # Start both backend and frontend concurrently
 dev:
@@ -26,3 +26,18 @@ kill:
 
 # Kill orphaned servers then start fresh
 restart: kill dev
+
+# Database (local Docker pgvector)
+db:
+	docker compose up -d db
+	@echo "Postgres running on localhost:5432"
+
+db-stop:
+	docker compose down
+
+db-reset:
+	docker compose down -v
+	@echo "Database volume removed — next 'make db' starts fresh"
+
+migrate:
+	cd backend && uv run alembic upgrade head

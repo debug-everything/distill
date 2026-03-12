@@ -158,9 +158,9 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
-## Phase 8 — UX: Knowledge Page — NOT STARTED
+## Phase 8 — UX: Knowledge Page — DONE
 
-- [ ] **Conversation history**: Maintain array of Q&A pairs in state. Render as a conversation thread instead of replacing previous answer. Related questions feed into next query naturally.
+- [x] **Conversation history**: Q&A pairs stored in `history` state array, rendered as a chat-style thread (user question right-aligned, answer cards below). Related questions shown only on the latest answer, clicking one adds to thread. Auto-scrolls to latest entry. Pending query shows inline with spinner.
 
 ---
 

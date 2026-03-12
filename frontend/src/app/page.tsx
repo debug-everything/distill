@@ -45,6 +45,7 @@ function formatElapsed(seconds: number): string {
 export default function Home() {
   const router = useRouter();
   const [input, setInput] = useState("");
+  const [captureMode, setCaptureMode] = useState<"consume_later" | "learn_now">("consume_later");
 
   // Bookmarklet support: pre-fill from ?url= query param
   useEffect(() => {
@@ -244,52 +245,74 @@ export default function Home() {
       {/* Capture form */}
       <section>
         <h2 className={`mb-4 font-medium ${ts.heading}`}>Add content</h2>
-        <textarea
-          placeholder="Paste links (articles or YouTube, one per line)…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !isMulti) {
-              e.preventDefault();
-              handleCapture("consume_later");
-            }
-          }}
-          rows={isMulti ? Math.min(urls.length + 1, 8) : 1}
-          className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ts.body}`}
-        />
+
+        {/* Mode toggle */}
+        <div className="mb-3 inline-flex rounded-lg border p-1">
+          <button
+            type="button"
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 ${ts.small} font-medium transition-colors ${
+              captureMode === "consume_later"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setCaptureMode("consume_later")}
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            Digest Queue
+          </button>
+          <button
+            type="button"
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 ${ts.small} font-medium transition-colors ${
+              captureMode === "learn_now"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setCaptureMode("learn_now")}
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Knowledge Base
+          </button>
+        </div>
+
+        <p className={`mb-3 ${ts.small} text-muted-foreground`}>
+          {captureMode === "consume_later"
+            ? "Articles are queued for your next digest — summarized, clustered, and ready to scan."
+            : "Articles are extracted, chunked, and indexed immediately — searchable via RAG."}
+        </p>
+
+        <div className="flex gap-2">
+          <textarea
+            placeholder="Paste links (articles or YouTube, one per line)…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !isMulti) {
+                e.preventDefault();
+                handleCapture(captureMode);
+              }
+            }}
+            rows={isMulti ? Math.min(urls.length + 1, 8) : 1}
+            className={`w-full flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ts.body}`}
+          />
+          <Button
+            onClick={() => handleCapture(captureMode)}
+            disabled={urls.length === 0 || isBusy}
+          >
+            {isBusy ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : captureMode === "consume_later" ? (
+              <BookOpen className="mr-1.5 h-4 w-4" />
+            ) : (
+              <Zap className="mr-1.5 h-4 w-4" />
+            )}
+            {isMulti ? `Add (${urls.length})` : "Add"}
+          </Button>
+        </div>
         {isMulti && (
           <p className={`mt-1 ${ts.small} text-muted-foreground`}>
             {urls.length} URLs detected
           </p>
         )}
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => handleCapture("learn_now")}
-            disabled={urls.length === 0 || isBusy}
-            variant="outline"
-          >
-            {isBusy && (capture.variables?.mode === "learn_now" || batchCapture.variables?.mode === "learn_now") ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <Zap className="mr-1.5 h-4 w-4" />
-            )}
-            Save to Knowledge Base{isMulti ? ` (${urls.length})` : ""}
-       </Button>
-          <Button
-            onClick={() => handleCapture("consume_later")}
-            disabled={urls.length === 0 || isBusy}
-            variant="outline"
-          >
-            {isBusy && (capture.variables?.mode === "consume_later" || batchCapture.variables?.mode === "consume_later") ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <BookOpen className="mr-1.5 h-4 w-4" />
-            )}
-            Add to Digest Queue{isMulti ? ` (${urls.length})` : ""}
-          </Button>
-        </div>
-
-        {/* Feedback is now handled via toasts */}
       </section>
 
       {/* Learn Now transient status (shown inline below capture form) */}

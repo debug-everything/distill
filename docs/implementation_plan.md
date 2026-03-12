@@ -180,7 +180,7 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 ---
 
 ## UX Follow-up (after Phase 5, before backlog)
-- **Tab/toggle mode selection on Capture page**: Replace two equal buttons with a tab that selects mode (Read Later / Learn Now). Context below input changes per mode. Always one primary action button. Bigger structural change but cleanest UX.
+- ~~**Tab/toggle mode selection on Capture page**~~: DONE — inline toggle (Digest Queue / Knowledge Base) with contextual description per mode, single "Add" action button.
 - **Compact queue summary**: Replace full queue item list with `Digest Queue: 5 articles ready · [Generate Digest]` and a "Show all" toggle. Dramatically shortens the page.
 - **Post-capture next-step guidance**: After adding to queue, show count + direct link to generate digest instead of just "Added: [title]"
 - **Input placeholder + microcopy**: Update placeholder to "Paste links (articles or YouTube, one per line)…". Add microcopy: "YouTube links are auto-transcribed."

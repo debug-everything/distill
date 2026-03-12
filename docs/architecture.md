@@ -190,12 +190,19 @@ User clicks [Learn this] on digest cluster
 
 ```
 User submits question
-    → POST /api/knowledge/query {question}
+    → POST /api/knowledge/query {question, history?}
     → embed(question)                      [embedder — SAME model as docs]
     → pgvector: SELECT chunks ORDER BY embedding <=> query_vec LIMIT 5
-    → rag_answer(question, context_chunks) [chat-heavy]
+    → rag_answer(question, context_chunks, history?) [chat-heavy]
     → return {answer, citations[{chunk_text, source_title, source_url}]}
 ```
+
+**Conversation history**: The client maintains an ephemeral array of Q&A pairs
+(session-scoped, not persisted). On each query, recent history is sent alongside
+the question. The backend trims to a ~4000-character budget (whole exchanges only,
+walking backward, minimum 1 exchange) and injects into the `rag_answer()` prompt
+as conversation context. This enables follow-up questions like "tell me more" or
+"how does that compare?" without server-side session state.
 
 ---
 
@@ -341,7 +348,7 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | `GET` | `/api/digests/processing-status` | Digest processing progress |
 | `PATCH` | `/api/digests/{id}` | Update cluster status (done, unread) |
 | `POST` | `/api/digests/{id}/promote` | Learn this → embed cluster to KB |
-| `POST` | `/api/knowledge/query` | RAG natural language query |
+| `POST` | `/api/knowledge/query` | RAG query (accepts optional conversation history) |
 | `GET` | `/api/knowledge` | List knowledge base items |
 | `GET` | `/api/settings/focused-topics` | Get user's focused topics list |
 | `PUT` | `/api/settings/focused-topics` | Set user's focused topics list (max 20) |

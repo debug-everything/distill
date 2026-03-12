@@ -220,10 +220,18 @@ export interface QueryResponse {
   llm_mode: "local" | "cloud" | null;
 }
 
-export function queryKB(question: string): Promise<QueryResponse> {
+export interface ChatHistoryEntry {
+  question: string;
+  answer: string;
+}
+
+export function queryKB(
+  question: string,
+  history?: ChatHistoryEntry[],
+): Promise<QueryResponse> {
   return apiFetch<QueryResponse>("/api/knowledge/query", {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history: history ?? [] }),
   });
 }
 
@@ -245,6 +253,12 @@ export interface KBListResponse {
 
 export function fetchKB(offset = 0, limit = 10): Promise<KBListResponse> {
   return apiFetch<KBListResponse>(`/api/knowledge?offset=${offset}&limit=${limit}`);
+}
+
+export function deleteKBItem(itemId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/knowledge/${itemId}`, {
+    method: "DELETE",
+  });
 }
 
 // Focused Topics (Settings)

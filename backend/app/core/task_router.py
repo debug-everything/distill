@@ -355,10 +355,37 @@ Text:
         return ["General"]
 
 
+def _trim_history(history: list[dict], budget: int = 4000) -> list[dict]:
+    """Select recent conversation exchanges that fit within a character budget.
+
+    Walks backward through history, including whole Q&A pairs until the budget
+    is exceeded. Always includes at least the most recent exchange.
+    """
+    if not history:
+        return []
+    trimmed: list[dict] = []
+    used = 0
+    for entry in reversed(history):
+        entry_len = len(entry.get("question", "")) + len(entry.get("answer", ""))
+        if trimmed and used + entry_len > budget:
+            break
+        trimmed.append(entry)
+        used += entry_len
+    trimmed.reverse()
+    return trimmed
+
+
 @_track
-async def rag_answer(question: str, context_chunks: list[str]) -> dict:
+async def rag_answer(
+    question: str,
+    context_chunks: list[str],
+    history: list[dict] | None = None,
+) -> dict:
     """
     Generate a RAG answer with citations.
+
+    Args:
+        history: Optional list of {"question": str, "answer": str} from the client.
 
     Returns: {answer: str, related_questions: list[str]}
     """
@@ -375,13 +402,24 @@ async def rag_answer(question: str, context_chunks: list[str]) -> dict:
         if topics_hint else ""
     )
 
+    trimmed = _trim_history(history or [])
+    history_section = ""
+    if trimmed:
+        lines = []
+        for entry in trimmed:
+            lines.append(f"User: {entry['question']}")
+            lines.append(f"Assistant: {entry['answer']}")
+        history_section = (
+            "\n\nConversation so far:\n" + "\n".join(lines) + "\n"
+        )
+
     system_prompt = f"""You are a helpful knowledge assistant. Answer questions using ONLY the provided sources.
 Cite sources using [1], [2], etc. inline. If the sources don't contain relevant information, say so.
 Output valid JSON only.{topics_section}"""
 
     user_prompt = f"""Sources:
 {context}
-
+{history_section}
 Question: {question}
 
 Respond with a JSON object:

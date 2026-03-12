@@ -2,13 +2,17 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
+  Clock,
   Cloud,
+  Copy,
   ExternalLink,
   Loader2,
   Monitor,
   Search,
   SendHorizonal,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +30,7 @@ import {
 import {
   queryKB,
   fetchKB,
+  deleteKBItem,
   type QueryResponse,
   type KBListResponse,
 } from "@/lib/api";
@@ -33,6 +38,18 @@ import {
 interface QAEntry {
   question: string;
   response: QueryResponse;
+  askedAt: number;   // Date.now() when question was sent
+  answeredAt: number; // Date.now() when response arrived
+}
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const secs = (ms / 1000).toFixed(1);
+  return `${secs}s`;
 }
 
 export default function KnowledgePage() {
@@ -53,13 +70,41 @@ export default function KnowledgePage() {
     queryFn: () => fetchKB(kbOffset, KB_PAGE_SIZE),
   });
 
+  const removeItem = useMutation({
+    mutationFn: deleteKBItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kb"] });
+      toast.success("Removed from knowledge base");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const askStartedAt = useRef<number>(0);
+
   const ask = useMutation({
-    mutationFn: queryKB,
+    mutationFn: (q: string) => {
+      const chatHistory = history.map((h) => ({
+        question: h.question,
+        answer: h.response.answer,
+      }));
+      return queryKB(q, chatHistory);
+    },
     onMutate: () => {
+      askStartedAt.current = Date.now();
       queryClient.setQueryData(["llmStatus"], { llm_mode: null, is_active: true });
     },
     onSuccess: (data, questionText) => {
-      setHistory((prev) => [...prev, { question: questionText, response: data }]);
+      setHistory((prev) => [
+        ...prev,
+        {
+          question: questionText,
+          response: data,
+          askedAt: askStartedAt.current,
+          answeredAt: Date.now(),
+        },
+      ]);
       setQuestion("");
     },
     onSettled: () => {
@@ -126,8 +171,13 @@ export default function KnowledgePage() {
               <div key={idx} className="space-y-3">
                 {/* Question */}
                 <div className="flex justify-end" ref={isLastEntry && !ask.isPending ? latestQuestionRef : undefined}>
-                  <div className={`max-w-[80%] rounded-lg bg-primary/10 px-4 py-2 ${ts.body}`}>
-                    {entry.question}
+                  <div className="max-w-[80%]">
+                    <div className={`rounded-lg bg-primary/10 px-4 py-2 ${ts.body}`}>
+                      {entry.question}
+                    </div>
+                    <p className="mt-1 text-right text-xs text-muted-foreground">
+                      {formatTime(entry.askedAt)}
+                    </p>
                   </div>
                 </div>
 
@@ -138,18 +188,34 @@ export default function KnowledgePage() {
                       {entry.response.answer}
                     </p>
 
-                    {entry.response.llm_mode && (
-                      <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {entry.response.llm_mode === "local" ? (
-                          <Monitor className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <Cloud className="h-3 w-3 text-amber-500" />
-                        )}
-                        <span>
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      {entry.response.llm_mode && (
+                        <span className="flex items-center gap-1.5">
+                          {entry.response.llm_mode === "local" ? (
+                            <Monitor className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Cloud className="h-3 w-3 text-amber-500" />
+                          )}
                           {entry.response.llm_mode === "local" ? "Local LLM" : "Cloud LLM (paid)"}
                         </span>
-                      </div>
-                    )}
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatDuration(entry.answeredAt - entry.askedAt)}
+                      </span>
+                      <span>{formatTime(entry.answeredAt)}</span>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 hover:text-foreground"
+                        onClick={() => {
+                          navigator.clipboard.writeText(entry.response.answer);
+                          toast.success("Copied to clipboard");
+                        }}
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copy
+                      </button>
+                    </div>
 
                     {entry.response.sources.length > 0 && (
                       <>
@@ -227,8 +293,13 @@ export default function KnowledgePage() {
           {ask.isPending && (
             <div className="space-y-3">
               <div className="flex justify-end" ref={latestQuestionRef}>
-                <div className={`max-w-[80%] rounded-lg bg-primary/10 px-4 py-2 ${ts.body}`}>
-                  {ask.variables}
+                <div className="max-w-[80%]">
+                  <div className={`rounded-lg bg-primary/10 px-4 py-2 ${ts.body}`}>
+                    {ask.variables}
+                  </div>
+                  <p className="mt-1 text-right text-xs text-muted-foreground">
+                    {formatTime(askStartedAt.current)}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -331,16 +402,27 @@ export default function KnowledgePage() {
                         </span>
                       </div>
                     </div>
-                    {item.url && (
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                    <div className="flex shrink-0 items-center gap-1">
+                      {item.url && (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeItem.mutate(item.id)}
+                        disabled={removeItem.isPending}
                       >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    )}
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}

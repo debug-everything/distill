@@ -160,7 +160,8 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ## Phase 8 — UX: Knowledge Page — DONE
 
-- [x] **Conversation history**: Q&A pairs stored in `history` state array, rendered as a chat-style thread (user question right-aligned, answer cards below). Related questions shown only on the latest answer, clicking one adds to thread. Auto-scrolls to latest entry. Pending query shows inline with spinner.
+- [x] **Conversation history UI**: Q&A pairs stored in `history` state array, rendered as a chat-style thread (user question right-aligned, answer cards below). Related questions shown only on the latest answer, clicking one adds to thread. Auto-scrolls to latest entry. Pending query shows inline with spinner.
+- [x] **Conversational RAG context**: Client sends recent Q&A history with each query. Backend trims to ~4000 character budget (whole exchanges only, walking backward from most recent, minimum 1 exchange) and injects into `rag_answer()` prompt. Enables follow-up questions without server-side session state. History is ephemeral (session-scoped, not persisted).
 
 ---
 

@@ -1,8 +1,8 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -13,8 +13,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class HistoryEntry(BaseModel):
+    question: str
+    answer: str
+
+
 class QueryRequest(BaseModel):
     question: str
+    history: list[HistoryEntry] = []
 
 
 class SourceChunk(BaseModel):
@@ -101,7 +107,8 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
 
     # Generate answer
     try:
-        answer_result = await rag_answer(req.question, context_chunks)
+        history_dicts = [h.model_dump() for h in req.history] if req.history else None
+        answer_result = await rag_answer(req.question, context_chunks, history=history_dicts)
         return QueryResponse(
             ok=True,
             answer=answer_result.get("answer", ""),
@@ -169,3 +176,18 @@ async def list_kb(
             for ki, chunk_count in rows
         ],
     }
+
+
+@router.delete("/api/knowledge/{item_id}")
+async def delete_kb_item(item_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a knowledge base item and its embeddings."""
+    result = await db.execute(
+        select(KnowledgeItem).where(KnowledgeItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Knowledge item not found")
+
+    await db.delete(item)
+    await db.commit()
+    return {"ok": True}

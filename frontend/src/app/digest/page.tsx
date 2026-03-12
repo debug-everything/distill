@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   BookOpen,
@@ -447,13 +448,16 @@ export default function DigestPage() {
 
   const promote = useMutation({
     mutationFn: promoteCluster,
-    onSuccess: (_data, clusterId) => {
-      // Update selectedCluster immediately so modal shows "Saved to KB"
+    onSuccess: (data, clusterId) => {
       setSelectedCluster((prev) =>
         prev && prev.id === clusterId ? { ...prev, status: "promoted" } : prev
       );
       queryClient.invalidateQueries({ queryKey: ["digest"] });
       queryClient.invalidateQueries({ queryKey: ["kb"] });
+      toast.success(`Saved to knowledge base (${data.indexed} article${data.indexed !== 1 ? "s" : ""} indexed)`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
 
@@ -776,16 +780,7 @@ export default function DigestPage() {
                   Done
                 </Button>
               </div>
-              {promote.isSuccess && (
-                <p className={`mt-2 ${ts.small} text-green-600`}>
-                  Added to knowledge base ({promote.data.indexed} article{promote.data.indexed !== 1 ? "s" : ""} indexed)
-                </p>
-              )}
-              {promote.isError && (
-                <p className={`mt-2 ${ts.small} text-destructive`}>
-                  {promote.error.message}
-                </p>
-              )}
+              {/* Promote feedback handled via toasts */}
             </>
           )}
         </DialogContent>

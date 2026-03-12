@@ -151,10 +151,10 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
-## Phase 7 — UX: Feedback & Loading — NOT STARTED
+## Phase 7 — UX: Feedback & Loading — DONE
 
-- [ ] **Skeleton loading on Capture page**: Replace "Loading queue..." text with skeleton cards (copy pattern from Knowledge page).
-- [ ] **Toast-based feedback system**: Replace inline success/error messages with shadcn/ui toasts. Auto-dismiss after ~5s. Covers capture, batch capture, process, promote, and done actions.
+- [x] **Skeleton loading on Capture page**: Replaced "Loading queue..." text with 3 skeleton cards (title + domain + icon placeholders).
+- [x] **Toast-based feedback system**: Replaced all inline success/error messages with sonner toasts (bottom-right, rich colors, close button, 5s auto-dismiss). Covers: single capture, batch capture, digest completion, learn now completion, promote to KB. Progress bars remain inline.
 
 ---
 

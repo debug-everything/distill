@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   BookOpen,
-  Check,
   ExternalLink,
   Loader2,
   Play,
@@ -17,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useSettings, textSizeClasses } from "@/lib/settings-store";
 import { FocusedTopics } from "@/components/focused-topics";
@@ -107,9 +107,13 @@ export default function Home() {
       setDigestPolling(false);
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["digest"] });
-      // Auto-navigate to digest page on successful completion
-      if (digestStatus.data?.last_result?.ok) {
+      const result = digestStatus.data?.last_result;
+      if (result?.ok) {
+        const time = digestStartedAt.current ? "" : digestElapsed > 0 ? ` in ${formatElapsed(digestElapsed)}` : "";
+        toast.success(`Created ${result.clusters_created} clusters from ${result.articles_processed} articles${time}`);
         router.push("/digest");
+      } else if (result && !result.ok) {
+        toast.error(`Processing failed: ${result.detail}`);
       }
     }
     prevDigestProcessing.current = isActive;
@@ -124,13 +128,21 @@ export default function Home() {
     } else if (isActive && learnNowStartedAt.current) {
       setLearnNowElapsed(Math.round((Date.now() - learnNowStartedAt.current) / 1000));
     } else if (prevLearnNowProcessing.current && !isActive) {
-      if (learnNowStartedAt.current) {
-        setLearnNowElapsed(Math.round((Date.now() - learnNowStartedAt.current) / 1000));
-      }
+      const elapsed = learnNowStartedAt.current
+        ? Math.round((Date.now() - learnNowStartedAt.current) / 1000)
+        : 0;
+      if (learnNowStartedAt.current) setLearnNowElapsed(elapsed);
       learnNowStartedAt.current = null;
       setLearnNowPolling(false);
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["kb"] });
+      const result = learnNowStatus.data?.last_result;
+      if (result?.ok) {
+        const time = elapsed > 0 ? ` in ${formatElapsed(elapsed)}` : "";
+        toast.success(`Indexed ${result.indexed} article${result.indexed !== 1 ? "s" : ""} to knowledge base${time}`);
+      } else if (result && !result.ok) {
+        toast.error(`Indexing failed: ${result.detail}`);
+      }
     }
     prevLearnNowProcessing.current = isActive;
   }, [learnNowStatus.data?.is_processing, learnNowStatus.dataUpdatedAt, queryClient]);
@@ -139,14 +151,21 @@ export default function Home() {
   const capture = useMutation({
     mutationFn: captureUrl,
     onSuccess: (data: CaptureResponse) => {
-      if (!data.duplicate) {
+      if (data.duplicate) {
+        toast.info("Already in your queue");
+      } else {
         setInput("");
+        const title = data.title || "Untitled";
+        const paywall = data.extraction_quality === "low" ? " (possible paywall)" : "";
+        toast.success(`Added: ${title}${paywall}`);
       }
       queryClient.invalidateQueries({ queryKey: ["queue"] });
-      // If learn_now, start polling
       if (capture.variables?.mode === "learn_now" && !data.duplicate) {
         setLearnNowPolling(true);
       }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
 
@@ -156,11 +175,21 @@ export default function Home() {
       captureBatch(urls, mode),
     onSuccess: (data: BatchCaptureResponse) => {
       setInput("");
+      const parts = [`Added ${data.added} article${data.added !== 1 ? "s" : ""}`];
+      if (data.duplicates > 0) parts.push(`${data.duplicates} duplicate${data.duplicates !== 1 ? "s" : ""} skipped`);
+      if (data.failed > 0) parts.push(`${data.failed} failed`);
+      if (data.failed > 0) {
+        toast.warning(parts.join(" · "));
+      } else {
+        toast.success(parts.join(" · "));
+      }
       queryClient.invalidateQueries({ queryKey: ["queue"] });
-      // If learn_now with new articles, start polling
       if (batchCapture.variables?.mode === "learn_now" && data.added > 0) {
         setLearnNowPolling(true);
       }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
 
@@ -191,10 +220,8 @@ export default function Home() {
 
   const isDigestProcessing =
     process.isPending || digestStatus.data?.is_processing;
-  const digestResult = digestStatus.data?.last_result;
 
   const isLearnNowProcessing = learnNowStatus.data?.is_processing;
-  const learnNowResult = learnNowStatus.data?.last_result;
 
   const consumeLater = queue.data?.consume_later;
 
@@ -249,70 +276,7 @@ export default function Home() {
           </Button>
         </div>
 
-        {/* Single capture feedback */}
-        {capture.isSuccess && capture.data.duplicate && (
-          <p className={`mt-2 ${ts.small} text-muted-foreground`}>
-            Already in your queue.
-          </p>
-        )}
-        {capture.isSuccess && !capture.data.duplicate && (
-          <p className={`mt-2 ${ts.small} text-green-600`}>
-            Added: {capture.data.title || "Untitled"}
-            {capture.data.extraction_quality === "low" && (
-              <span className="ml-2 text-amber-600">
-                (possible paywall — limited content)
-              </span>
-            )}
-            {capture.variables?.mode === "consume_later" && consumeLater && (
-              <span className="text-muted-foreground">
-                {" "}· {consumeLater.total + 1} in queue ·{" "}
-                <button
-                  type="button"
-                  className="underline hover:text-foreground"
-                  onClick={() => process.mutate()}
-                  disabled={isDigestProcessing}
-                >
-                  Generate Digest →
-                </button>
-              </span>
-            )}
-          </p>
-        )}
-        {capture.isError && (
-          <p className={`mt-2 ${ts.small} text-destructive`}>
-            {capture.error.message}
-          </p>
-        )}
-
-        {/* Batch capture feedback */}
-        {batchCapture.isSuccess && (
-          <div className={`mt-2 space-y-1 ${ts.small}`}>
-            <p className="text-green-600">
-              Added {batchCapture.data.added} article{batchCapture.data.added !== 1 ? "s" : ""}
-              {batchCapture.data.duplicates > 0 && (
-                <span className="text-muted-foreground">
-                  {" "}· {batchCapture.data.duplicates} duplicate{batchCapture.data.duplicates !== 1 ? "s" : ""} skipped
-                </span>
-              )}
-            </p>
-            {batchCapture.data.failed > 0 && (
-              <div className="text-destructive">
-                {batchCapture.data.results
-                  .filter((r) => !r.ok)
-                  .map((r) => (
-                    <p key={r.url} className="truncate">
-                      Failed: {r.url} — {r.error}
-                    </p>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
-        {batchCapture.isError && (
-          <p className={`mt-2 ${ts.small} text-destructive`}>
-            {batchCapture.error.message}
-          </p>
-        )}
+        {/* Feedback is now handled via toasts */}
       </section>
 
       {/* Learn Now transient status (shown inline below capture form) */}
@@ -336,20 +300,7 @@ export default function Home() {
           )}
         </div>
       )}
-      {learnNowResult && !isLearnNowProcessing && learnNowResult.ok && (
-        <p className={`mt-2 ${ts.small} text-green-600`}>
-          Indexed {learnNowResult.indexed} article{learnNowResult.indexed !== 1 ? "s" : ""} to knowledge base
-          {learnNowElapsed > 0 && ` in ${formatElapsed(learnNowElapsed)}`}.{" "}
-          <Link href="/knowledge" className="underline">
-            View knowledge base
-          </Link>
-        </p>
-      )}
-      {learnNowResult && !isLearnNowProcessing && !learnNowResult.ok && (
-        <p className={`mt-2 ${ts.small} text-destructive`}>
-          Indexing failed: {learnNowResult.detail}
-        </p>
-      )}
+      {/* Learn now completion feedback handled via toasts */}
 
       <Separator className="my-8" />
 
@@ -404,25 +355,22 @@ export default function Home() {
           </div>
         )}
 
-        {/* Digest result */}
-        {digestResult && !isDigestProcessing && digestResult.ok && (
-          <p className={`mb-4 ${ts.small} text-green-600`}>
-            Created {digestResult.clusters_created} clusters from{" "}
-            {digestResult.articles_processed} articles
-            {digestElapsed > 0 && ` in ${formatElapsed(digestElapsed)}`}.{" "}
-            <Link href="/digest" className="underline">
-              View digest
-            </Link>
-          </p>
-        )}
-        {digestResult && !isDigestProcessing && !digestResult.ok && (
-          <p className={`mb-4 ${ts.small} text-destructive`}>
-            Processing failed: {digestResult.detail}
-          </p>
-        )}
+        {/* Digest completion feedback handled via toasts + auto-redirect */}
 
         {queue.isLoading && (
-          <p className={`${ts.small} text-muted-foreground`}>Loading queue...</p>
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                  <Skeleton className="h-4 w-4 shrink-0" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
 
         {consumeLater && consumeLater.items.length === 0 && (

@@ -184,6 +184,18 @@ async def capture_batch(req: BatchCaptureRequest, db: AsyncSession = Depends(get
     return response_data
 
 
+@router.delete("/api/articles/{article_id}")
+async def delete_article(article_id: str, db: AsyncSession = Depends(get_db)):
+    """Remove a queued article."""
+    result = await db.execute(select(Article).where(Article.id == article_id))
+    article = result.scalar_one_or_none()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    await db.delete(article)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/api/articles/indexing-status")
 async def get_learn_now_status():
     """Get current Learn Now processing status."""

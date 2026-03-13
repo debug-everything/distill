@@ -179,32 +179,111 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
-## UX Follow-up (after Phase 5, before backlog)
+## Completed UX Follow-ups
 - ~~**Tab/toggle mode selection on Capture page**~~: DONE — inline toggle (Digest Queue / Knowledge Base) with contextual description per mode, single "Add" action button.
-- **Compact queue summary**: Replace full queue item list with `Digest Queue: 5 articles ready · [Generate Digest]` and a "Show all" toggle. Dramatically shortens the page.
-- **Post-capture next-step guidance**: After adding to queue, show count + direct link to generate digest instead of just "Added: [title]"
-- **Input placeholder + microcopy**: Update placeholder to "Paste links (articles or YouTube, one per line)…". Add microcopy: "YouTube links are auto-transcribed."
-- **Button subtitles**: Show destination under button labels (e.g., "Add to Digest Queue — appears in your next digest")
+- ~~**Post-capture next-step guidance**~~: DONE (Phase 5B) — toast + "Generate Digest →" link after capture.
+- ~~**Input placeholder + microcopy**~~: DONE (Phase 5A) — updated placeholder text.
+- ~~**Button subtitles**~~: DROPPED — redundant after mode toggle contextual description was added.
 
 ---
 
-## UX Backlog (unprioritized, revisit later)
-- Undo toast on "Done" action (defer actual API call ~5s, show undo option)
-- Keyboard navigation in reading modal (`j`/`k` for prev/next, `d` for done, `l` for learn)
+## UX Follow-up (next up)
+- ~~**Compact queue summary**~~: DONE — Collapsible queue with summary line (article count, video/paywall counts) and chevron toggle. Items hidden by default.
+- ~~**Digest modal prev/next navigation**~~: DONE — Prev/Next chevron buttons with position counter (e.g. "3/12") in modal header. Navigates through visible (filtered) clusters.
+
+---
+
+## Other Backlog (prioritized)
 - Server-side topic filtering on Knowledge page (current client-side filter only applies to loaded page)
-- Badge overload reduction on digest tiles (cap at 3-4 visible, rest in modal)
-- MinimalTile redesign (currently near-identical to CompactTile — make it genuinely stripped down)
-- Queue item removal (no way to delete accidentally added URLs)
-- Accessible topic filter badges (`role="button"`, `tabIndex`, `aria-pressed`)
-- **Focused Topics placement rethink**: Once topics are configured, the full CRUD UI is rarely needed but the user should still be reminded the feature exists and see what's active. Options: collapse by default showing "Focused Topics (4)" summary line that expands on click; move to a settings page with a subtle indicator on capture page; or a persistent pill strip (read-only) with an "Edit" link. Key tension: not always visible ≠ forgotten.
-- Mobile swipe/touch patterns (swipe-to-dismiss, pull-to-refresh, bottom nav)
+- ~~Queue item removal~~: DONE — `DELETE /api/articles/{id}` endpoint + trash icon on each queue row.
 - **KB sort/filter options**: Sort by information density, filter by source type (article/video) and extraction quality. Currently date-only.
 - **KB retrieval usage tracking**: Log which `knowledge_item_id`s surface in RAG queries. Show "never cited" indicator or "last cited" date. Enables smart sorting by relevance/usage. (See also "Knowledge Base — Smart Sorting" in Ideas.)
+
+---
+
+## Future Phases (major effort, planning needed)
+- PDF/DOCX ingestion (Phase 9)
+- Improved Quote Extraction (Phase 10)
+- **Focused Topics placement rethink**: Once topics are configured, the full CRUD UI is rarely needed but the user should still be reminded the feature exists and see what's active. Options: collapse by default showing "Focused Topics (4)" summary line that expands on click; move to a settings page with a subtle indicator on capture page; or a persistent pill strip (read-only) with an "Edit" link. Key tension: not always visible ≠ forgotten.
+- Browser extension (Phase 12)
+- Mobile swipe/touch patterns (swipe-to-dismiss, pull-to-refresh, bottom nav)
+- Cloud deployment (Phase 11)
+
+---
+
+## On Hold / Re-evaluate Later
+- Accessible topic filter badges (`role="button"`, `tabIndex`, `aria-pressed`)
+- Badge overload reduction on digest tiles (cap at 4-5 visible, rest in modal)
+- Undo toast on "Done" action (defer actual API call ~5s, show undo option)
+- Keyboard navigation in reading modal (`j`/`k` for prev/next, `d` for done, `l` for learn)
+- MinimalTile redesign (currently near-identical to CompactTile — make it genuinely stripped down)
 - **KB bulk select + delete**: Checkboxes on KB items with "Remove selected" for cleanup sessions.
 
 ---
 
 ## Ideas (unhashed — needs design)
+
+### UX Coherence Audit — Flow-Driven Information Architecture
+
+**Design inspiration:** 37signals (Basecamp, HEY). Core principle: the UI should reflect **how the user thinks about their workflow**, not how the system is structured. HEY doesn't have "pages with features" — it has stages in a decision flow (Screener → Imbox → Feed). Each screen answers one question: "what do I do next?"
+
+**The Distill cycle:** The user's natural loop is: *discover something → throw it at Distill → later, catch up on what matters → sometimes, recall or dig deeper*. The IA should map to these **intents**, not to backend concepts (articles, clusters, embeddings).
+
+#### Current pain points
+
+**1. Pages are organized by system concept, not user intent**
+- "Capture" is really "I found something interesting"
+- "Digest" is really "Catch me up"
+- "Knowledge" is really "What do I know about X?"
+- But the pages are named and structured around the *data model* (articles, digest clusters, knowledge items), not around what the user is trying to do. 37signals would name these by verb/intent, not noun/entity.
+
+**2. Capture page is a junk drawer**
+- It's simultaneously: URL input, queue manager, pipeline trigger, focused topics config, and stats dashboard. A 37signals page answers ONE question. This page answers five.
+- HEY analogy: the Screener only asks "do you want to hear from this sender?" — one decision, then move on. The Distill capture equivalent should be: "throw a link at it and go." Everything else is a different intent.
+
+**3. The cycle has no gravity — nothing pulls you forward**
+- In HEY, new mail pulls you to the Imbox. In Basecamp, due items pull you to the Hill Chart. In Distill, nothing tells you "5 articles are waiting to be digested" unless you navigate to the Capture page and notice the queue count.
+- The app is passive — it waits for you to go find the work. A flow-driven IA would **surface the next natural action** wherever you are.
+
+**4. Two capture modes fight the simplicity principle**
+- "Digest Queue" vs "Knowledge Base" is a system distinction (different pipelines) presented as a user choice. But most users just want to "save this." 37signals would pick an opinionated default (everything goes to digest) and make the alternative a power-user affordance, not an equal toggle.
+
+**5. Knowledge page serves two masters**
+- Top half: conversational Q&A (intent: "recall"). Bottom half: article index management (intent: "organize"). These are different sessions. Mixing them is like HEY putting email settings below your inbox.
+
+#### Design principles for the rethink (37signals-inspired)
+
+1. **Each screen = one job.** If a page answers more than one question, split it or subordinate the secondary concerns.
+2. **The cycle is the navigation.** Instead of a flat navbar with 3 equal pages, the UI should hint at *what's next* in the loop. "You saved 3 links → [Catch up now]". "You read today's digest → [Ask a question]".
+3. **Opinionated defaults over equal choices.** Don't make the user configure or choose when a good default exists. The digest path should be the obvious default; direct-to-KB is the escape hatch.
+4. **Calm software.** No dashboards, no stats on the home page, no badges competing for attention. Show counts only where they drive a decision ("5 unread" on digest is useful; "total API calls" on capture is noise).
+5. **Progressive disclosure, not upfront complexity.** Focused Topics, Stats, KB article management — these are configuration/maintenance tasks. They shouldn't share screen space with the primary workflow.
+
+#### Possible IA directions (sketch, not spec)
+
+**Option A — Intent-based pages:**
+- **Save** (`/`) — Just the input. Paste and go. One button. Maybe a tiny "saved today" count. That's it.
+- **Catch Up** (`/digest`) — Your unread digest. Prominently shows "5 new clusters since yesterday." Reading modal with promote/done. When empty: "All caught up. [Save something new]" — closes the loop.
+- **Ask** (`/ask`) — Just the RAG chat. No article index here.
+- **Library** (`/library`) — Your indexed KB articles. Browse, filter, delete, bulk manage. Separate from the conversational interface.
+- **Settings** — Focused Topics, Stats, Reading preferences. Accessible but out of the main flow.
+
+**Option B — Single-page flow (most 37signals-like):**
+- One main view that morphs based on state. Like HEY's single-screen focus.
+- If you have unprocessed articles: shows the queue + "Generate Digest" prominently.
+- If you have unread clusters: shows the digest. The queue is a small indicator, not a full section.
+- If you're all caught up: shows the Ask interface. "You've read everything. Got questions?"
+- The page adapts to where you are in the cycle instead of making you navigate.
+
+**Option C — Incremental (lowest effort, still meaningful):**
+- Keep 3 pages but add **cross-page nudges**: after capturing → "Generate digest when ready" toast with link; on digest when all done → "Ask your Knowledge Base" CTA; on KB → "Save more articles" link when results are thin.
+- Move Focused Topics + Stats off the capture page into a gear/settings area.
+- Rename nav items to intent verbs: "Save", "Read", "Ask".
+
+#### What this is NOT
+A stepper/wizard UI. The workflow is cyclical (save → read → query → save more), not linear. Forcing it into a progress bar would fight the natural usage pattern. The goal is for the UI to **rotate with the user** through the cycle, not march them through a sequence.
+
+---
 
 ### Customizable Summarization + Progressive Expansion
 - **System-level default depth**: User-configurable summary verbosity (concise / standard / detailed) — affects digest processing output

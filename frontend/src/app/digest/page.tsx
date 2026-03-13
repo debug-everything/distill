@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Flame,
   LayoutGrid,
@@ -639,12 +641,43 @@ export default function DigestPage() {
         onOpenChange={(open) => !open && setSelectedCluster(null)}
       >
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto p-6 sm:p-8">
-          {selectedCluster && (
+          {selectedCluster && (() => {
+            const currentIdx = visibleClusters.findIndex((c) => c.id === selectedCluster.id);
+            const prevCluster = currentIdx > 0 ? visibleClusters[currentIdx - 1] : null;
+            const nextCluster = currentIdx < visibleClusters.length - 1 ? visibleClusters[currentIdx + 1] : null;
+            return (
             <>
               <DialogHeader>
-                <DialogTitle className={`${ts.heading} leading-snug`}>
-                  {selectedCluster.title}
-                </DialogTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <DialogTitle className={`${ts.heading} leading-snug`}>
+                    {selectedCluster.title}
+                  </DialogTitle>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={!prevCluster}
+                      onClick={() => prevCluster && setSelectedCluster(prevCluster)}
+                      title="Previous"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className={`${ts.small} text-muted-foreground tabular-nums`}>
+                      {currentIdx >= 0 ? currentIdx + 1 : "?"}/{visibleClusters.length}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={!nextCluster}
+                      onClick={() => nextCluster && setSelectedCluster(nextCluster)}
+                      title="Next"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2 pt-1">
                   {selectedCluster.is_merged && (
                     <Badge variant="secondary">
@@ -782,7 +815,8 @@ export default function DigestPage() {
               </div>
               {/* Promote feedback handled via toasts */}
             </>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

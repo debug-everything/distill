@@ -98,6 +98,12 @@ export function fetchQueue(): Promise<QueueResponse> {
   return apiFetch<QueueResponse>("/api/articles");
 }
 
+export function deleteArticle(articleId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/articles/${articleId}`, {
+    method: "DELETE",
+  });
+}
+
 // Learn Now status
 export interface LearnNowResult {
   ok: boolean;

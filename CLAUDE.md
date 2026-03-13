@@ -28,6 +28,7 @@ make install      # install deps for both
 
 Backend: `cd backend && uv run uvicorn app.main:app --reload`
 Frontend: `cd frontend && pnpm dev`
+Storybook: `cd frontend && pnpm storybook` (localhost:6006) — UI mockups and component playground
 
 ### Database
 

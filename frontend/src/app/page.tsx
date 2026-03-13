@@ -7,9 +7,12 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Loader2,
   Play,
+  Trash2,
   Video,
   Zap,
 } from "lucide-react";
@@ -24,6 +27,7 @@ import { StatsCard } from "@/components/stats-card";
 import {
   captureUrl,
   captureBatch,
+  deleteArticle,
   fetchQueue,
   triggerProcess,
   fetchProcessingStatus,
@@ -207,6 +211,18 @@ export default function Home() {
     },
   });
 
+  // Remove queue item
+  const removeArticle = useMutation({
+    mutationFn: deleteArticle,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      toast.success("Removed from queue");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   // Digest process
   const process = useMutation({
     mutationFn: triggerProcess,
@@ -238,6 +254,7 @@ export default function Home() {
   const isLearnNowProcessing = learnNowStatus.data?.is_processing;
 
   const consumeLater = queue.data?.consume_later;
+  const [queueExpanded, setQueueExpanded] = useState(false);
 
 
   return (
@@ -417,51 +434,69 @@ export default function Home() {
 
         {consumeLater && consumeLater.items.length > 0 && (
           <div className="space-y-2">
-            {consumeLater.items.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="flex items-center gap-3 py-4">
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate font-medium ${ts.body}`}>
-                      {item.title || item.url}
-                    </p>
-                    <p className={`${ts.small} text-muted-foreground`}>
-                      {item.source_domain}
-                    </p>
+            {/* Compact summary line */}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md border bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/60"
+              onClick={() => setQueueExpanded((prev) => !prev)}
+            >
+              <span className={`flex-1 ${ts.body}`}>
+                <span className="font-medium">{consumeLater.total}</span>{" "}
+                <span className="text-muted-foreground">
+                  article{consumeLater.total !== 1 ? "s" : ""} queued
+                  {consumeLater.items.filter((i) => i.content_type === "video").length > 0 && (
+                    <> · {consumeLater.items.filter((i) => i.content_type === "video").length} video{consumeLater.items.filter((i) => i.content_type === "video").length !== 1 ? "s" : ""}</>
+                  )}
+                  {consumeLater.items.filter((i) => i.extraction_quality === "low").length > 0 && (
+                    <> · {consumeLater.items.filter((i) => i.extraction_quality === "low").length} paywall</>
+                  )}
+                </span>
+              </span>
+              {queueExpanded ? (
+                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+            </button>
+
+            {/* Expandable item list — compact rows */}
+            {queueExpanded && (
+              <div className="rounded-md border divide-y">
+                {consumeLater.items.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className={`truncate ${ts.small}`}>
+                        <span className="font-medium">{item.title || item.url}</span>
+                        <span className="ml-2 text-muted-foreground">{item.source_domain}</span>
+                      </p>
+                    </div>
+                    {item.content_type === "video" && (
+                      <span title="Video"><Video className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /></span>
+                    )}
+                    {item.extraction_quality === "low" && (
+                      <span title="Paywall"><AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" /></span>
+                    )}
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                    <button
+                      type="button"
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeArticle.mutate(item.id)}
+                      disabled={removeArticle.isPending}
+                      title="Remove"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                  {item.content_type === "video" && (
-                    <Badge variant="outline" className="shrink-0">
-                      <Video className="mr-1 h-3 w-3" />
-                      Video
-                    </Badge>
-                  )}
-                  {item.extraction_quality === "auto-transcript" && (
-                    <Badge
-                      variant="outline"
-                      className="shrink-0 border-amber-300 text-amber-600"
-                    >
-                      Auto-transcript
-                    </Badge>
-                  )}
-                  {item.extraction_quality === "low" && (
-                    <Badge
-                      variant="outline"
-                      className="shrink-0 border-amber-300 text-amber-600"
-                    >
-                      <AlertTriangle className="mr-1 h-3 w-3" />
-                      Paywall
-                    </Badge>
-                  )}
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </CardContent>
-              </Card>
-            ))}
+                ))}
+              </div>
+            )}
 
             {/* Prominent Generate Digest CTA below queue */}
             {!isDigestProcessing && (

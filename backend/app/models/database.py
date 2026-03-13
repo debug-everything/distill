@@ -62,6 +62,7 @@ class Cluster(Base):
     content_style: Mapped[str | None] = mapped_column(Text)
     information_density: Mapped[int | None] = mapped_column(Integer)
     content_attributes: Mapped[dict | None] = mapped_column(JSONB)
+    unpacked_sections: Mapped[list | None] = mapped_column(JSONB)
     source_count: Mapped[int] = mapped_column(Integer, default=1)
     is_merged: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(Text, default="unread")

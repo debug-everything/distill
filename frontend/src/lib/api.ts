@@ -135,6 +135,16 @@ export interface DigestSource {
   image_url: string | null;
 }
 
+export interface UnpackSection {
+  title: string;
+  content: string;
+}
+
+export interface UnpackResponse {
+  ok: boolean;
+  sections: UnpackSection[];
+}
+
 export interface DigestCluster {
   id: string;
   digest_date: string;
@@ -147,6 +157,7 @@ export interface DigestCluster {
   content_style: string | null;
   information_density: number | null;
   content_attributes: Record<string, unknown> | null;
+  unpacked_sections: UnpackSection[] | null;
   source_count: number;
   is_merged: boolean;
   status: string;
@@ -196,6 +207,10 @@ export function markClusterDone(clusterId: string): Promise<{ ok: boolean }> {
 
 export function promoteCluster(clusterId: string): Promise<{ ok: boolean; indexed?: number; failed?: number }> {
   return apiFetch(`/api/digests/${clusterId}/promote`, { method: "POST" });
+}
+
+export function unpackCluster(clusterId: string): Promise<UnpackResponse> {
+  return apiFetch<UnpackResponse>(`/api/digests/${clusterId}/unpack`, { method: "POST" });
 }
 
 // LLM Status

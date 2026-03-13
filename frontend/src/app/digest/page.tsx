@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -45,7 +46,9 @@ import {
   fetchFocusedTopics,
   markClusterDone,
   promoteCluster,
+  unpackCluster,
   type DigestCluster,
+  type UnpackSection,
 } from "@/lib/api";
 
 const SUMMARY_CHAR_LIMIT = 200;
@@ -381,6 +384,7 @@ const LAYOUT_OPTIONS: { value: TileLayout; icon: typeof LayoutList; label: strin
 
 export default function DigestPage() {
   const [selectedCluster, setSelectedCluster] = useState<DigestCluster | null>(null);
+  const [unpackedView, setUnpackedView] = useState(false);
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
@@ -457,6 +461,33 @@ export default function DigestPage() {
       queryClient.invalidateQueries({ queryKey: ["digest"] });
       queryClient.invalidateQueries({ queryKey: ["kb"] });
       toast.success(`Saved to knowledge base (${data.indexed} article${data.indexed !== 1 ? "s" : ""} indexed)`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const unpack = useMutation({
+    mutationFn: unpackCluster,
+    onSuccess: (data, clusterId) => {
+      setUnpackedView(true);
+      // Update the cluster in query cache so sections are cached client-side
+      queryClient.setQueryData<typeof digest.data>(["digest"], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            clusters: page.clusters.map((c) =>
+              c.id === clusterId ? { ...c, unpacked_sections: data.sections } : c
+            ),
+          })),
+        };
+      });
+      // Also update the selected cluster in local state
+      setSelectedCluster((prev) =>
+        prev && prev.id === clusterId ? { ...prev, unpacked_sections: data.sections } : prev
+      );
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -608,7 +639,7 @@ export default function DigestPage() {
                 <TileComponent
                   key={cluster.id}
                   cluster={cluster}
-                  onClick={() => setSelectedCluster(cluster)}
+                  onClick={() => { setSelectedCluster(cluster); setUnpackedView(false); }}
                   onDone={() => done.mutate(cluster.id)}
                   ts={ts}
                   focusedSet={focusedSet}
@@ -658,7 +689,7 @@ export default function DigestPage() {
                       size="icon"
                       className="h-8 w-8"
                       disabled={!prevCluster}
-                      onClick={() => prevCluster && setSelectedCluster(prevCluster)}
+                      onClick={() => { if (prevCluster) { setSelectedCluster(prevCluster); setUnpackedView(false); } }}
                       title="Previous"
                     >
                       <ChevronLeft className="h-4 w-4" />
@@ -671,7 +702,7 @@ export default function DigestPage() {
                       size="icon"
                       className="h-8 w-8"
                       disabled={!nextCluster}
-                      onClick={() => nextCluster && setSelectedCluster(nextCluster)}
+                      onClick={() => { if (nextCluster) { setSelectedCluster(nextCluster); setUnpackedView(false); } }}
                       title="Next"
                     >
                       <ChevronRight className="h-4 w-4" />
@@ -707,23 +738,56 @@ export default function DigestPage() {
                 </TabsList>
 
                 <TabsContent value="summary" className={`mt-5 space-y-4 ${rf}`}>
-                  <p className={`${ts.body} ${ls}`}>
-                    {selectedCluster.summary}
-                  </p>
-                  {selectedCluster.bullets.length > 0 && (
+                  {!unpackedView ? (
                     <>
-                      <Separator />
-                      <ul className="space-y-3">
-                        {selectedCluster.bullets.map((bullet, i) => (
-                          <li
-                            key={i}
-                            className={`flex gap-2.5 ${ts.body} ${ls}`}
-                          >
-                            <span className="mt-0.5 text-muted-foreground">•</span>
-                            <span>{bullet}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <p className={`${ts.body} ${ls}`}>
+                        {selectedCluster.summary}
+                      </p>
+                      {selectedCluster.bullets.length > 0 && (
+                        <>
+                          <Separator />
+                          <ul className="space-y-3">
+                            {selectedCluster.bullets.map((bullet, i) => (
+                              <li
+                                key={i}
+                                className={`flex gap-2.5 ${ts.body} ${ls}`}
+                              >
+                                <span className="mt-0.5 text-muted-foreground">•</span>
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className={`${ts.small} text-muted-foreground hover:text-foreground underline`}
+                        onClick={() => setUnpackedView(false)}
+                      >
+                        Show quick summary
+                      </button>
+                      {unpack.isPending ? (
+                        <div className="space-y-5">
+                          {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="space-y-2">
+                              <Skeleton className="h-5 w-2/5" />
+                              <Skeleton className="h-4 w-full" />
+                              <Skeleton className="h-4 w-4/5" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-5">
+                          {selectedCluster.unpacked_sections?.map((section, i) => (
+                            <div key={i}>
+                              <h4 className={`font-semibold ${ts.body} ${ls}`}>{section.title}</h4>
+                              <p className={`mt-1 ${ts.body} ${ls} text-muted-foreground`}>{section.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                 </TabsContent>
@@ -793,6 +857,26 @@ export default function DigestPage() {
               <Separator className="my-4" />
 
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={selectedCluster.sources.every((s) => s.extraction_quality === "low")}
+                  onClick={() => {
+                    if (selectedCluster.unpacked_sections) {
+                      setUnpackedView(true);
+                    } else {
+                      setUnpackedView(true);
+                      unpack.mutate(selectedCluster.id);
+                    }
+                  }}
+                  title={
+                    selectedCluster.sources.every((s) => s.extraction_quality === "low")
+                      ? "Cannot unpack — all sources are behind a paywall"
+                      : undefined
+                  }
+                >
+                  <Layers className="mr-1.5 h-4 w-4" />
+                  Unpack
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => promote.mutate(selectedCluster.id)}

@@ -51,10 +51,16 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [captureMode, setCaptureMode] = useState<"consume_later" | "learn_now">("consume_later");
 
-  // Bookmarklet support: pre-fill from ?url= query param
+  // Bookmarklet support: auto-capture from ?url= query param
+  const bookmarkletUrl = useRef<string | null>(null);
   useEffect(() => {
     const url = new URLSearchParams(window.location.search).get("url");
-    if (url) setInput(url);
+    if (url) {
+      setInput(url);
+      bookmarkletUrl.current = url;
+      // Clean the URL bar so refreshing doesn't re-trigger
+      window.history.replaceState({}, "", "/");
+    }
   }, []);
   const queryClient = useQueryClient();
   const textSize = useSettings((s) => s.textSize);
@@ -180,6 +186,15 @@ export default function Home() {
       toast.error(err.message);
     },
   });
+
+  // Auto-submit bookmarklet URL
+  useEffect(() => {
+    if (bookmarkletUrl.current) {
+      const url = bookmarkletUrl.current;
+      bookmarkletUrl.current = null;
+      capture.mutate({ url, mode: "consume_later" });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Batch capture
   const batchCapture = useMutation({

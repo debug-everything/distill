@@ -8,10 +8,21 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.models.database import Article, Cluster, ClusterSource
+from app.core.task_router import refresh_focused_topics, unpack_sections
 from app.services.digest_processor import start_processing_in_background, status as processing_status
 from app.services.knowledge_service import index_articles_to_kb
 
 router = APIRouter()
+
+
+class UnpackSection(BaseModel):
+    title: str
+    content: str
+
+
+class UnpackResponse(BaseModel):
+    ok: bool
+    sections: list[UnpackSection]
 
 
 class SourceItem(BaseModel):
@@ -35,6 +46,7 @@ class ClusterItem(BaseModel):
     content_style: str | None = None
     information_density: int | None = None
     content_attributes: dict | None = None
+    unpacked_sections: list[UnpackSection] | None = None
     source_count: int
     is_merged: bool
     status: str
@@ -95,6 +107,7 @@ def _cluster_to_item(c: Cluster) -> ClusterItem:
         content_style=c.content_style,
         information_density=c.information_density,
         content_attributes=c.content_attributes,
+        unpacked_sections=[UnpackSection(**s) for s in c.unpacked_sections] if c.unpacked_sections else None,
         source_count=c.source_count,
         is_merged=c.is_merged,
         status=c.status,
@@ -152,6 +165,50 @@ async def update_digest(cluster_id: str, req: DigestPatchRequest, db: AsyncSessi
     )
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/api/digests/{cluster_id}/unpack", response_model=UnpackResponse)
+async def unpack_cluster(cluster_id: str, db: AsyncSession = Depends(get_db)):
+    """Generate a structured section breakdown of a cluster's source content."""
+    result = await db.execute(
+        select(Cluster)
+        .options(selectinload(Cluster.sources).selectinload(ClusterSource.article))
+        .where(Cluster.id == cluster_id)
+    )
+    cluster = result.scalar_one_or_none()
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    # Cache hit
+    if cluster.unpacked_sections is not None:
+        return UnpackResponse(ok=True, sections=[UnpackSection(**s) for s in cluster.unpacked_sections])
+
+    # Paywall gate — all sources must be paywalled to block
+    non_paywalled = [s for s in cluster.sources if s.article and s.article.extraction_quality != "low"]
+    if not non_paywalled:
+        raise HTTPException(status_code=422, detail="Cannot unpack — all sources are behind a paywall")
+
+    # Gather source text
+    source_count = len(non_paywalled)
+    per_article_budget = max(3000, 12000 // source_count)
+    parts = []
+    for s in non_paywalled:
+        text = s.article.clean_text or ""
+        title = s.article.title or s.source_name or "Untitled"
+        parts.append(f"## {title}\n\n{text[:per_article_budget]}")
+    combined_text = "\n\n---\n\n".join(parts)
+
+    # Refresh focused topics cache (may be stale for on-demand calls)
+    await refresh_focused_topics()
+
+    # LLM call
+    sections = await unpack_sections(combined_text, cluster.headline)
+
+    # Cache write
+    cluster.unpacked_sections = sections
+    await db.commit()
+
+    return UnpackResponse(ok=True, sections=[UnpackSection(**s) for s in sections])
 
 
 @router.post("/api/digests/{cluster_id}/promote")

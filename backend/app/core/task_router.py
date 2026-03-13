@@ -272,6 +272,74 @@ Text:
 
 
 @_track
+async def unpack_sections(text: str, headline: str) -> list[dict]:
+    """
+    Break down content into 3-5 key sections with mini-summaries.
+
+    Returns: [{"title": "Section heading", "content": "2-3 sentence summary"}, ...]
+    """
+    use_local = await _should_use_local("heavy")
+
+    system_prompt = "You are an expert content analyst. You break down content into its key sections, surfacing the structure and substance the reader needs to decide whether to engage with the full piece."
+
+    topics_hint = _get_focused_topics_prompt()
+    topics_section = (
+        f"\n\nThe reader is particularly interested in: {topics_hint}.\n"
+        "Emphasize sections that relate to these topics."
+        if topics_hint else ""
+    )
+
+    user_prompt = f"""Break down this content into 3-5 key sections. For each section, provide a short heading and a 2-3 sentence summary of what that section covers.
+Focus on substance — skip introductions, filler, and promotional content.{topics_section}
+
+The existing summary headline is: {headline}
+
+Respond with a JSON object: {{"sections": [{{"title": "...", "content": "..."}}, ...]}}
+
+Text:
+{text[:12000]}"""
+
+    if use_local:
+        model = _get_chat_model("heavy")
+        logger.info(f"unpack_sections: using local model {model}")
+        try:
+            response = await litellm.acompletion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                api_base=settings.ollama_base_url,
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
+            llm_tracker.record(is_local=True)
+            record_usage(response, "unpack", model, is_local=True)
+            result = json.loads(response.choices[0].message.content)
+            return result.get("sections", result) if isinstance(result, dict) else result
+        except Exception as e:
+            logger.warning(f"unpack_sections: local model failed ({e}), falling back to cloud")
+            if settings.llm_mode_heavy == "local":
+                raise
+
+    model = _get_cloud_chat_model()
+    logger.info(f"unpack_sections: using cloud model {model}")
+    response = await litellm.acompletion(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"},
+    )
+    llm_tracker.record(is_local=False)
+    record_usage(response, "unpack", model, is_local=False)
+    result = json.loads(response.choices[0].message.content)
+    return result.get("sections", result) if isinstance(result, dict) else result
+
+
+@_track
 async def score_quality(summary_text: str) -> int:
     """
     Score the quality of a summary on a scale of 1-10.

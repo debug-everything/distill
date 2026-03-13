@@ -193,6 +193,24 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
+## Phase 10 — Unpack (On-Demand Drill-Down) — IN PROGRESS
+
+### 10A — Unpack Phase 1 — DONE
+- [x] `clusters.unpacked_sections` JSONB column + Alembic migration
+- [x] `unpack_sections()` in task_router (heavy tier, 12k char budget, JSON response)
+- [x] `POST /api/digests/{cluster_id}/unpack` — server-side cache, paywall gate, focused topics injection
+- [x] `unpacked_sections` exposed in `ClusterItem` API response
+- [x] Frontend: "Unpack" button in reading modal summary tab → 3-5 structured sections
+- [x] Client-side cache: instant re-open after first unpack, reset on prev/next navigation
+
+### 10B — Unpack Phase 2 — NOT STARTED
+- [ ] YouTube timestamp-aware sections (map sections to video timestamps)
+
+### 10C — Unpack Phase 3 — NOT STARTED
+- [ ] Modal animation (smooth expand/collapse transition)
+
+---
+
 ## Other Backlog (prioritized)
 - Server-side topic filtering on Knowledge page (current client-side filter only applies to loaded page)
 - ~~Queue item removal~~: DONE — `DELETE /api/articles/{id}` endpoint + trash icon on each queue row.
@@ -223,65 +241,99 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ## Ideas (unhashed — needs design)
 
-### UX Coherence Audit — Flow-Driven Information Architecture
+### UX Coherence — Flow-Driven IA Redesign (Option A)
 
-**Design inspiration:** 37signals (Basecamp, HEY). Core principle: the UI should reflect **how the user thinks about their workflow**, not how the system is structured. HEY doesn't have "pages with features" — it has stages in a decision flow (Screener → Imbox → Feed). Each screen answers one question: "what do I do next?"
+**Status:** DESIGN PHASE — iterating in Storybook (`src/stories/mockups/`)
+**Decision:** Option A (intent-based pages) chosen over adaptive single-page (B) and incremental (C).
+**Inspiration:** 37signals (Basecamp, HEY) — each screen answers one question; the cycle is the navigation; opinionated defaults over equal choices.
 
-**The Distill cycle:** The user's natural loop is: *discover something → throw it at Distill → later, catch up on what matters → sometimes, recall or dig deeper*. The IA should map to these **intents**, not to backend concepts (articles, clusters, embeddings).
+#### Why we're doing this
+Current pages are organized by system concept (Capture, Digest, Knowledge), not user intent. The Capture page alone is a URL input, queue manager, pipeline trigger, topic config, and stats dashboard — five jobs on one screen. Nothing pulls the user forward through the natural cycle. Two capture modes present a system distinction as a user choice.
 
-#### Current pain points
+#### The design: intent-based pages
 
-**1. Pages are organized by system concept, not user intent**
-- "Capture" is really "I found something interesting"
-- "Digest" is really "Catch me up"
-- "Knowledge" is really "What do I know about X?"
-- But the pages are named and structured around the *data model* (articles, digest clusters, knowledge items), not around what the user is trying to do. 37signals would name these by verb/intent, not noun/entity.
+| Route | Nav label | One job | Current equivalent |
+|---|---|---|---|
+| `/` | **Save** | Paste a link and go. Nothing else. | Capture page (gutted) |
+| `/read` | **Read** | Catch up on your unread digest. | Digest page (renamed) |
+| `/ask` | **Ask** | Query your knowledge base. Chat only. | Knowledge page (top half) |
+| `/library` | *(secondary)* | Browse/manage indexed KB articles. | Knowledge page (bottom half) |
+| `/settings` | *(gear icon)* | Focused Topics, Stats, Reading prefs. | Scattered across Capture |
 
-**2. Capture page is a junk drawer**
-- It's simultaneously: URL input, queue manager, pipeline trigger, focused topics config, and stats dashboard. A 37signals page answers ONE question. This page answers five.
-- HEY analogy: the Screener only asks "do you want to hear from this sender?" — one decision, then move on. The Distill capture equivalent should be: "throw a link at it and go." Everything else is a different intent.
+**Cycle nudges** — each page has a contextual nudge pointing to the next natural action:
+- Save → "5 articles waiting → **Catch up now**"
+- Read → "All caught up → **Ask something**"
+- Ask → "Found something new? → **Save a link**"
 
-**3. The cycle has no gravity — nothing pulls you forward**
-- In HEY, new mail pulls you to the Imbox. In Basecamp, due items pull you to the Hill Chart. In Distill, nothing tells you "5 articles are waiting to be digested" unless you navigate to the Capture page and notice the queue count.
-- The app is passive — it waits for you to go find the work. A flow-driven IA would **surface the next natural action** wherever you are.
+#### Critical analysis — what's not yet figured out
 
-**4. Two capture modes fight the simplicity principle**
-- "Digest Queue" vs "Knowledge Base" is a system distinction (different pipelines) presented as a user choice. But most users just want to "save this." 37signals would pick an opinionated default (everything goes to digest) and make the alternative a power-user affordance, not an equal toggle.
+**1. Where does "Generate Digest" live?**
+This is the hardest open question. Currently the user manually triggers digest generation from the Capture page. In the new IA, Save is just "paste and go" — there's no room for a pipeline trigger. Options:
+- **Auto-generate**: Run the digest pipeline automatically on a schedule or when article count crosses a threshold. Most 37signals-like (the system does the work, you just show up). But: local LLM processing is slow and resource-heavy — you don't want it firing while the user is doing other things on the same machine. Also removes user agency over *when* to process.
+- **Trigger on the Read page**: When you navigate to Read and there are unprocessed articles, show a "Generate digest from N articles" prompt at the top before the clusters. Makes sense conceptually (you went to Read, so you want to read). But: processing takes 30-120s — the user came to read and now has to wait. That's a broken promise.
+- **Trigger on Save after accumulation**: After saving, the nudge could say "5 articles queued — **Generate digest now**" instead of just "Catch up now." Keeps it on the Save page but only when relevant. Risk: re-cluttering Save with processing state.
+- **Background auto-process + Read page just shows results**: Process in background whenever new articles accumulate (e.g., 5+ unprocessed). Read page always shows latest results. Most seamless, but needs a background job scheduler (cron or persistent worker) — new infrastructure.
 
-**5. Knowledge page serves two masters**
-- Top half: conversational Q&A (intent: "recall"). Bottom half: article index management (intent: "organize"). These are different sessions. Mixing them is like HEY putting email settings below your inbox.
+**2. What happens to the queue visibility?**
+Currently users can see, expand, and manage their queued articles. In the stripped-down Save page, there's only a count ("5 articles waiting"). Is that enough? What if you accidentally saved the wrong URL? Options:
+- Queue management moves to a sub-view of Save (expandable, like current collapsible design)
+- Queue management moves to Settings/Library (clean, but disconnected from the save action)
+- Minimal inline: just show count + "undo last save" toast for the most common correction
 
-#### Design principles for the rethink (37signals-inspired)
+**3. Library as a 4th page — is it worth it?**
+Splitting Knowledge into Ask + Library makes each page single-purpose, but it adds a 4th navigation item. 37signals would push back: more pages = more cognitive load. Counter-arguments:
+- Library is a maintenance/config task, not a daily flow — it could live under Settings or as a sub-view of Ask (collapsible "Indexed articles" drawer)
+- If Library is rarely visited, a dedicated nav slot wastes prime real estate
+- But: KB article deletion and quality review *is* important for RAG quality — burying it hurts discoverability
 
-1. **Each screen = one job.** If a page answers more than one question, split it or subordinate the secondary concerns.
-2. **The cycle is the navigation.** Instead of a flat navbar with 3 equal pages, the UI should hint at *what's next* in the loop. "You saved 3 links → [Catch up now]". "You read today's digest → [Ask a question]".
-3. **Opinionated defaults over equal choices.** Don't make the user configure or choose when a good default exists. The digest path should be the obvious default; direct-to-KB is the escape hatch.
-4. **Calm software.** No dashboards, no stats on the home page, no badges competing for attention. Show counts only where they drive a decision ("5 unread" on digest is useful; "total API calls" on capture is noise).
-5. **Progressive disclosure, not upfront complexity.** Focused Topics, Stats, KB article management — these are configuration/maintenance tasks. They shouldn't share screen space with the primary workflow.
+**4. The "save directly to KB" escape hatch**
+The mockup has a small "or save directly to Knowledge Base" link below the main Save input. Questions:
+- Is a text link enough discoverability? Power users will find it, but it's invisible to everyone else.
+- Should it be a toggle (like current mode selector) but visually subordinated? e.g., small toggle below the input rather than a prominent equal-weight choice.
+- Or should we drop it entirely and force all content through the digest pipeline? The digest "promote to KB" flow already exists. The direct-to-KB path was added as a shortcut, not a core flow. Removing it simplifies the mental model: everything you save goes to digest, and the best stuff gets promoted to permanent KB. Trade-off: no way to immediately index something you want to query right now.
 
-#### Possible IA directions (sketch, not spec)
+**5. Nav badge count — what number?**
+The Read nav item shows a badge count. What does it count?
+- Unread clusters (current `status !== "done"`)? Could be stale — 50 unread from last week feels like a chore, not a nudge.
+- Clusters from today only? More HEY-like ("3 new today"), but ignores legitimate backlog.
+- Unprocessed articles (queued but not yet digested)? Different meaning — "you have raw material" vs "you have summaries to read."
+- Perhaps: **new since last visit** — most meaningful, but requires tracking last-read timestamp (new state to manage).
 
-**Option A — Intent-based pages:**
-- **Save** (`/`) — Just the input. Paste and go. One button. Maybe a tiny "saved today" count. That's it.
-- **Catch Up** (`/digest`) — Your unread digest. Prominently shows "5 new clusters since yesterday." Reading modal with promote/done. When empty: "All caught up. [Save something new]" — closes the loop.
-- **Ask** (`/ask`) — Just the RAG chat. No article index here.
-- **Library** (`/library`) — Your indexed KB articles. Browse, filter, delete, bulk manage. Separate from the conversational interface.
-- **Settings** — Focused Topics, Stats, Reading preferences. Accessible but out of the main flow.
+**6. Processing status feedback**
+Current design shows inline progress bars on the Capture page during digest generation and Learn Now indexing. In the new IA:
+- If processing is triggered from Save, the progress bar is on Save. But the user might navigate to Read while waiting.
+- If triggered from Read, the progress bar is on Read. Makes more sense but means Read has two states: "generating..." and "here are your clusters."
+- Global indicator? The navbar LLM status light already shows activity. Could add a small "Processing 3/5..." label next to it that's visible on any page.
 
-**Option B — Single-page flow (most 37signals-like):**
-- One main view that morphs based on state. Like HEY's single-screen focus.
-- If you have unprocessed articles: shows the queue + "Generate Digest" prominently.
-- If you have unread clusters: shows the digest. The queue is a small indicator, not a full section.
-- If you're all caught up: shows the Ask interface. "You've read everything. Got questions?"
-- The page adapts to where you are in the cycle instead of making you navigate.
+**7. Focused Topics placement**
+Currently on the Capture page. Moving to Settings is clean, but Focused Topics meaningfully shapes what you see on Read (sort order) and Ask (RAG answers). If it's buried in Settings, will users forget it exists?
+- Option: Read-only topic pills on the Read page header (showing what's active), with an "Edit" link to Settings
+- Option: First-run prompt on Read page when no topics are configured: "Set your interests to personalize your digest → [Configure]"
 
-**Option C — Incremental (lowest effort, still meaningful):**
-- Keep 3 pages but add **cross-page nudges**: after capturing → "Generate digest when ready" toast with link; on digest when all done → "Ask your Knowledge Base" CTA; on KB → "Save more articles" link when results are thin.
-- Move Focused Topics + Stats off the capture page into a gear/settings area.
-- Rename nav items to intent verbs: "Save", "Read", "Ask".
+**8. Does the cycle actually hold up?**
+The Save → Read → Ask → Save loop sounds clean, but real usage might not be so tidy:
+- Some sessions are *just* saving (found 10 links, dump them all, leave)
+- Some sessions are *just* reading (morning digest routine, no saving)
+- Some sessions are *just* asking (need to recall something specific)
+- The cycle nudges assume you'll flow through all three. If you only use one page per session, the nudges are noise. Should they be dismissable? Contextual (only show after certain actions)? Or just subtle enough that ignoring them costs nothing?
 
-#### What this is NOT
-A stepper/wizard UI. The workflow is cyclical (save → read → query → save more), not linear. Forcing it into a progress bar would fight the natural usage pattern. The goal is for the UI to **rotate with the user** through the cycle, not march them through a sequence.
+**9. Migration effort — what breaks?**
+Changing from 3 pages to 4-5 means:
+- URL routes change (`/digest` → `/read`, `/knowledge` → `/ask` + `/library`)
+- Bookmarklet uses `/?url=` — that stays the same (Save is still `/`)
+- Navbar restructure (3 primary + 1 secondary + settings gear)
+- Existing Capture page components need to be decomposed and redistributed
+- Processing status system needs rethinking (currently tightly coupled to Capture page state)
+- Queue management extracted into its own component
+- API proxy routes in `next.config.ts` unaffected (backend unchanged)
+
+#### Design principles (kept from earlier analysis)
+
+1. **Each screen = one job.** If a page answers more than one question, split it or subordinate.
+2. **The cycle is the navigation.** Nudges point to the next natural action, not just pages.
+3. **Opinionated defaults over equal choices.** Digest path is the default; direct-to-KB is the escape hatch.
+4. **Calm software.** Show counts only where they drive a decision.
+5. **Progressive disclosure.** Config tasks (topics, stats, KB management) live outside the primary flow.
 
 ---
 

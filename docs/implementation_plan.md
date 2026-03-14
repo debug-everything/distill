@@ -14,7 +14,12 @@
 | 2 | Learn Now + RAG | DONE | Learn Now direct-to-KB, Learn This promotion, RAG query |
 | 3 | Polish | IN PROGRESS | Quality gate, snooze, cost tracking, loading states |
 | 4 | YouTube Support | DONE | Video transcript extraction in both modes |
-| 5 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
+| 5 | UX: Flow Clarity | DONE | Rename actions, make pipeline visible, onboarding |
+| 6 | UX: Digest Polish | DONE | Empty states, focused topic badges, stale modal fix |
+| 7 | UX: Feedback & Loading | DONE | Skeleton loading, toast-based feedback |
+| 8 | UX: Knowledge Page | DONE | Conversation history, conversational RAG |
+| 9 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
+| 10 | Unpack | DONE | On-demand drill-down, video timestamps, modal animation |
 
 ---
 
@@ -193,7 +198,7 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
-## Phase 10 — Unpack (On-Demand Drill-Down) — IN PROGRESS
+## Phase 10 — Unpack (On-Demand Drill-Down) — DONE
 
 ### 10A — Unpack Phase 1 — DONE
 - [x] `clusters.unpacked_sections` JSONB column + Alembic migration
@@ -203,11 +208,26 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 - [x] Frontend: "Unpack" button in reading modal summary tab → 3-5 structured sections
 - [x] Client-side cache: instant re-open after first unpack, reset on prev/next navigation
 
-### 10B — Unpack Phase 2 — NOT STARTED
-- [ ] YouTube timestamp-aware sections (map sections to video timestamps)
+### 10B — Unpack Phase 2 — DONE
+- [x] Preserve per-segment timestamps from YouTube transcript API in `content_attributes.timestamped_segments`
+- [x] `_build_timestamped_text()` helper formats transcript with `[MM:SS]` markers every 30s for LLM context
+- [x] `unpack_sections()` accepts `is_video` flag — prompt instructs LLM to extract nearest timestamp per section
+- [x] `UnpackSection` model gains optional `timestamp` field (backend + frontend)
+- [x] Frontend renders clickable `▶ MM:SS` links that open YouTube at the correct moment
+- [x] Graceful fallback: old videos without stored timestamps show sections without links
 
-### 10C — Unpack Phase 3 — NOT STARTED
-- [ ] Modal animation (smooth expand/collapse transition)
+### 10C — Unpack Phase 3 — DONE
+- [x] Dialog open/close animation: fade + zoom + slide-up (duration 200ms, was 100ms and imperceptible)
+- [x] Summary ↔ unpacked view crossfade transition (`animate-in fade-in`)
+- [x] Staggered section reveal: unpack sections cascade in with 75ms delay per section
+
+---
+
+## Bug Fixes (March 2026)
+- [x] **Article recapture**: Finished articles (done/ready/kb_indexed/promoted/processing/failed) can be recaptured — re-extracts content and resets status instead of returning "duplicate"
+- [x] **Unhashable type in digest processor**: `timestamped_segments` (list of dicts) caused `set()` crash during content_attributes merge — fixed to skip merging complex lists
+- [x] **RAG source numbering mismatch**: LLM cited chunk-level `[Source N]` but frontend deduplicated by article — fixed by grouping chunks by source before sending to LLM
+- [x] **Irrelevant RAG sources**: Added minimum similarity threshold (0.3) to pgvector query — low-relevance chunks no longer returned
 
 ---
 

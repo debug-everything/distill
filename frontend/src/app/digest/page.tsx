@@ -750,13 +750,13 @@ export default function DigestPage() {
 
                 <TabsContent value="summary" className={`mt-5 space-y-4 ${rf}`}>
                   {!unpackedView ? (
-                    <>
+                    <div key="summary" className="animate-in fade-in duration-200">
                       <p className={`${ts.body} ${ls}`}>
                         {selectedCluster.summary}
                       </p>
                       {selectedCluster.bullets.length > 0 && (
                         <>
-                          <Separator />
+                          <Separator className="my-4" />
                           <ul className="space-y-3">
                             {selectedCluster.bullets.map((bullet, i) => (
                               <li
@@ -770,9 +770,9 @@ export default function DigestPage() {
                           </ul>
                         </>
                       )}
-                    </>
+                    </div>
                   ) : (
-                    <>
+                    <div key="unpacked" className="animate-in fade-in duration-200 space-y-4">
                       <button
                         className={`${ts.small} text-muted-foreground hover:text-foreground underline`}
                         onClick={() => setUnpackedView(false)}
@@ -794,7 +794,7 @@ export default function DigestPage() {
                           {(() => {
                             const videoUrl = getVideoSourceUrl(selectedCluster);
                             return selectedCluster.unpacked_sections?.map((section, i) => (
-                              <div key={i}>
+                              <div key={i} className="animate-in fade-in slide-in-from-bottom-1 duration-200" style={{ animationDelay: `${i * 75}ms`, animationFillMode: "backwards" }}>
                                 <div className="flex items-center gap-2">
                                   <h4 className={`font-semibold ${ts.body} ${ls}`}>{section.title}</h4>
                                   {section.timestamp && videoUrl && (
@@ -814,7 +814,7 @@ export default function DigestPage() {
                           })()}
                         </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </TabsContent>
 

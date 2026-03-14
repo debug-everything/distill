@@ -191,7 +191,17 @@ async def _run_pipeline(db: AsyncSession) -> dict:
                         merged_attrs[k] = max(merged_attrs.get(k, 0), v)
                     elif isinstance(v, list):
                         existing = merged_attrs.get(k, [])
-                        merged_attrs[k] = list(set(existing + v))
+                        # Only deduplicate hashable items (strings, etc.)
+                        # Lists of dicts (e.g. timestamped_segments) are kept from first source
+                        if not existing:
+                            merged_attrs[k] = v
+                        elif v and isinstance(v[0], dict):
+                            pass  # keep existing, don't merge complex lists
+                        else:
+                            try:
+                                merged_attrs[k] = list(set(existing + v))
+                            except TypeError:
+                                pass  # unhashable items — keep existing
 
         # Extract content_style and information_density from LLM summary
         content_style = merged_summary.get("content_style")

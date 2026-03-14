@@ -138,6 +138,7 @@ export interface DigestSource {
 export interface UnpackSection {
   title: string;
   content: string;
+  timestamp?: string | null;
 }
 
 export interface UnpackResponse {

@@ -18,6 +18,7 @@ router = APIRouter()
 class UnpackSection(BaseModel):
     title: str
     content: str
+    timestamp: str | None = None
 
 
 class UnpackResponse(BaseModel):
@@ -167,6 +168,29 @@ async def update_digest(cluster_id: str, req: DigestPatchRequest, db: AsyncSessi
     return {"ok": True}
 
 
+def _build_timestamped_text(article: Article, budget: int) -> str:
+    """Build text with [MM:SS] markers from timestamped segments."""
+    segments = (article.content_attributes or {}).get("timestamped_segments")
+    if not segments:
+        return (article.clean_text or "")[:budget]
+
+    parts: list[str] = []
+    char_count = 0
+    last_marker_time = -30  # insert a marker at most every 30s
+    for seg in segments:
+        start = seg["start"]
+        text = seg["text"]
+        if char_count + len(text) > budget:
+            break
+        if start - last_marker_time >= 30:
+            m, s = divmod(int(start), 60)
+            parts.append(f"[{m}:{s:02d}]")
+            last_marker_time = start
+        parts.append(text)
+        char_count += len(text)
+    return " ".join(parts)
+
+
 @router.post("/api/digests/{cluster_id}/unpack", response_model=UnpackResponse)
 async def unpack_cluster(cluster_id: str, db: AsyncSession = Depends(get_db)):
     """Generate a structured section breakdown of a cluster's source content."""
@@ -191,18 +215,23 @@ async def unpack_cluster(cluster_id: str, db: AsyncSession = Depends(get_db)):
     # Gather source text
     source_count = len(non_paywalled)
     per_article_budget = max(3000, 12000 // source_count)
+    has_video = False
     parts = []
     for s in non_paywalled:
-        text = s.article.clean_text or ""
+        if s.article.content_type == "video":
+            text = _build_timestamped_text(s.article, per_article_budget)
+            has_video = True
+        else:
+            text = (s.article.clean_text or "")[:per_article_budget]
         title = s.article.title or s.source_name or "Untitled"
-        parts.append(f"## {title}\n\n{text[:per_article_budget]}")
+        parts.append(f"## {title}\n\n{text}")
     combined_text = "\n\n---\n\n".join(parts)
 
     # Refresh focused topics cache (may be stale for on-demand calls)
     await refresh_focused_topics()
 
     # LLM call
-    sections = await unpack_sections(combined_text, cluster.headline)
+    sections = await unpack_sections(combined_text, cluster.headline, is_video=has_video)
 
     # Cache write
     cluster.unpacked_sections = sections

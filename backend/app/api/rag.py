@@ -67,7 +67,8 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
     # Embed the question
     question_embedding = (await embed([req.question]))[0]
 
-    # pgvector cosine similarity search — top 5 chunks
+    # pgvector cosine similarity search — top 5 chunks, minimum similarity threshold
+    min_similarity = 0.3
     embedding_str = "[" + ",".join(str(x) for x in question_embedding) + "]"
     result = await db.execute(
         text("""
@@ -76,10 +77,11 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
                    1 - (e.embedding <=> CAST(:embedding AS vector)) AS similarity
             FROM embeddings e
             JOIN knowledge_items ki ON ki.id = e.knowledge_item_id
+            WHERE 1 - (e.embedding <=> CAST(:embedding AS vector)) >= :min_sim
             ORDER BY e.embedding <=> CAST(:embedding AS vector)
             LIMIT 5
         """),
-        {"embedding": embedding_str},
+        {"embedding": embedding_str, "min_sim": min_similarity},
     )
     rows = result.all()
 
@@ -91,18 +93,34 @@ async def query_kb(req: QueryRequest, db: AsyncSession = Depends(get_db)):
             related_questions=[],
         )
 
-    # Build context for RAG
-    context_chunks = [row.chunk_text for row in rows]
-    sources = [
-        SourceChunk(
-            knowledge_item_id=str(row.knowledge_item_id),
-            chunk_index=row.chunk_index,
-            chunk_text=row.chunk_text,
-            title=row.title,
-            url=row.url,
-            similarity=round(float(row.similarity), 4),
-        )
-        for row in rows
+    # Build context for RAG — group chunks by source so citation numbers
+    # match the deduplicated sources the frontend displays
+    seen_sources: dict[str, int] = {}  # knowledge_item_id → source index
+    grouped_chunks: dict[int, list[str]] = {}  # source index → chunk texts
+    sources: list[SourceChunk] = []
+
+    for row in rows:
+        kid = str(row.knowledge_item_id)
+        if kid not in seen_sources:
+            idx = len(seen_sources)
+            seen_sources[kid] = idx
+            grouped_chunks[idx] = []
+            sources.append(
+                SourceChunk(
+                    knowledge_item_id=kid,
+                    chunk_index=row.chunk_index,
+                    chunk_text=row.chunk_text,
+                    title=row.title,
+                    url=row.url,
+                    similarity=round(float(row.similarity), 4),
+                )
+            )
+        grouped_chunks[seen_sources[kid]].append(row.chunk_text)
+
+    # Build context chunks with stable source numbering (1-indexed)
+    context_chunks = [
+        "\n\n".join(grouped_chunks[i])
+        for i in range(len(grouped_chunks))
     ]
 
     # Generate answer

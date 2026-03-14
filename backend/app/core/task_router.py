@@ -272,11 +272,12 @@ Text:
 
 
 @_track
-async def unpack_sections(text: str, headline: str) -> list[dict]:
+async def unpack_sections(text: str, headline: str, is_video: bool = False) -> list[dict]:
     """
     Break down content into 3-5 key sections with mini-summaries.
 
     Returns: [{"title": "Section heading", "content": "2-3 sentence summary"}, ...]
+    When is_video=True, sections may include a "timestamp" field (e.g. "3:45").
     """
     use_local = await _should_use_local("heavy")
 
@@ -289,12 +290,21 @@ async def unpack_sections(text: str, headline: str) -> list[dict]:
         if topics_hint else ""
     )
 
+    timestamp_instruction = ""
+    if is_video:
+        timestamp_instruction = """
+If the text contains [MM:SS] timestamp markers, include a "timestamp" field in each section with the marker closest to where that section's content begins (e.g., "timestamp": "3:45"). If no timestamps are present, omit the field."""
+
+    response_example = '{"sections": [{"title": "...", "content": "..."}, ...]}'
+    if is_video:
+        response_example = '{"sections": [{"title": "...", "content": "...", "timestamp": "3:45"}, ...]}'
+
     user_prompt = f"""Break down this content into 3-5 key sections. For each section, provide a short heading and a 2-3 sentence summary of what that section covers.
-Focus on substance — skip introductions, filler, and promotional content.{topics_section}
+Focus on substance — skip introductions, filler, and promotional content.{topics_section}{timestamp_instruction}
 
 The existing summary headline is: {headline}
 
-Respond with a JSON object: {{"sections": [{{"title": "...", "content": "..."}}, ...]}}
+Respond with a JSON object: {response_example}
 
 Text:
 {text[:12000]}"""

@@ -55,8 +55,32 @@ class BatchCaptureResponse(BaseModel):
 async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCaptureItemResult:
     """Capture a single URL. Returns a result dict (never raises)."""
     url_hash = hashlib.sha256(url.encode()).hexdigest()
-    existing = await db.execute(select(Article).where(Article.url_hash == url_hash))
-    if existing.scalar_one_or_none():
+    result = await db.execute(select(Article).where(Article.url_hash == url_hash))
+    existing = result.scalar_one_or_none()
+    if existing:
+        # Allow recapture of finished articles (e.g. after KB deletion)
+        if existing.status in ("done", "ready", "kb_indexed", "promoted"):
+            try:
+                fresh = await extract_content(url)
+                existing.title = fresh.title
+                existing.raw_html = fresh.raw_html
+                existing.clean_text = fresh.clean_text
+                existing.content_type = fresh.content_type
+                existing.extraction_quality = fresh.extraction_quality
+                existing.source_domain = fresh.source_domain
+                existing.image_url = fresh.image_url
+                existing.content_attributes = fresh.content_attributes
+            except Exception as e:
+                logger.warning(f"Re-extraction failed for {url}, reusing existing data: {e}")
+            existing.mode = mode
+            existing.status = "indexing" if mode == "learn_now" else "queued"
+            return BatchCaptureItemResult(
+                url=url,
+                ok=True,
+                article_id=str(existing.id),
+                title=existing.title,
+                extraction_quality=existing.extraction_quality,
+            )
         return BatchCaptureItemResult(url=url, ok=True, duplicate=True)
 
     try:
@@ -100,8 +124,38 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
 
     # Dedup check via URL hash
     url_hash = hashlib.sha256(req.url.encode()).hexdigest()
-    existing = await db.execute(select(Article).where(Article.url_hash == url_hash))
-    if existing.scalar_one_or_none():
+    result = await db.execute(select(Article).where(Article.url_hash == url_hash))
+    existing = result.scalar_one_or_none()
+    if existing:
+        # Allow recapture of finished articles (e.g. after KB deletion)
+        if existing.status in ("done", "ready", "kb_indexed", "promoted", "processing", "failed"):
+            # Re-extract to pick up latest extractor improvements (e.g. timestamps)
+            try:
+                fresh = await extract_content(req.url)
+                existing.title = fresh.title
+                existing.raw_html = fresh.raw_html
+                existing.clean_text = fresh.clean_text
+                existing.content_type = fresh.content_type
+                existing.extraction_quality = fresh.extraction_quality
+                existing.source_domain = fresh.source_domain
+                existing.image_url = fresh.image_url
+                existing.content_attributes = fresh.content_attributes
+            except Exception as e:
+                logger.warning(f"Re-extraction failed for {req.url}, reusing existing data: {e}")
+            existing.mode = req.mode
+            existing.status = "indexing" if req.mode == "learn_now" else "queued"
+            await db.commit()
+            await db.refresh(existing)
+            response_data = CaptureResponse(
+                ok=True,
+                article_id=str(existing.id),
+                title=existing.title,
+                extraction_quality=existing.extraction_quality,
+            )
+            if req.mode == "learn_now":
+                start_learn_now_in_background([str(existing.id)])
+                return JSONResponse(status_code=202, content=response_data.model_dump())
+            return response_data
         return CaptureResponse(ok=True, duplicate=True)
 
     # Extract article content at capture time

@@ -114,6 +114,7 @@ async def extract_video(url: str) -> ExtractionResult:
 
     # Try manual transcript first, then auto-generated
     is_auto_generated = False
+    timestamped_segments: list[dict] = []
     try:
         transcript_list = _yt_api.list(video_id)
 
@@ -128,6 +129,10 @@ async def extract_video(url: str) -> ExtractionResult:
 
         segments = transcript.fetch()
         clean_text = " ".join(seg.text for seg in segments)
+        timestamped_segments = [
+            {"start": round(seg.start, 1), "text": seg.text}
+            for seg in segments
+        ]
     except ValueError:
         raise
     except Exception:
@@ -135,6 +140,10 @@ async def extract_video(url: str) -> ExtractionResult:
         try:
             segments = _yt_api.fetch(video_id)
             clean_text = " ".join(seg.text for seg in segments)
+            timestamped_segments = [
+                {"start": round(seg.start, 1), "text": seg.text}
+                for seg in segments
+            ]
             is_auto_generated = True  # assume auto if we can't determine
         except Exception as e:
             raise ValueError(f"Could not fetch transcript for video {video_id}: {e}")
@@ -166,6 +175,7 @@ async def extract_video(url: str) -> ExtractionResult:
     content_attributes = {
         **demo_cues,
         **desc_analysis,
+        "timestamped_segments": timestamped_segments,
     }
 
     logger.info(

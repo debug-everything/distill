@@ -81,6 +81,17 @@ function hasVideoSource(cluster: DigestCluster): boolean {
   return cluster.sources.some((s) => s.content_type === "video");
 }
 
+function getVideoSourceUrl(cluster: DigestCluster): string | null {
+  const videoSource = cluster.sources.find((s) => s.content_type === "video");
+  return videoSource?.source_url ?? null;
+}
+
+function timestampToSeconds(ts: string): number {
+  const parts = ts.split(":").map(Number);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
+
 function hasAutoTranscript(cluster: DigestCluster): boolean {
   return cluster.sources.some((s) => s.extraction_quality === "auto-transcript");
 }
@@ -780,12 +791,27 @@ export default function DigestPage() {
                         </div>
                       ) : (
                         <div className="space-y-5">
-                          {selectedCluster.unpacked_sections?.map((section, i) => (
-                            <div key={i}>
-                              <h4 className={`font-semibold ${ts.body} ${ls}`}>{section.title}</h4>
-                              <p className={`mt-1 ${ts.body} ${ls} text-muted-foreground`}>{section.content}</p>
-                            </div>
-                          ))}
+                          {(() => {
+                            const videoUrl = getVideoSourceUrl(selectedCluster);
+                            return selectedCluster.unpacked_sections?.map((section, i) => (
+                              <div key={i}>
+                                <div className="flex items-center gap-2">
+                                  <h4 className={`font-semibold ${ts.body} ${ls}`}>{section.title}</h4>
+                                  {section.timestamp && videoUrl && (
+                                    <a
+                                      href={`${videoUrl}${videoUrl.includes("?") ? "&" : "?"}t=${timestampToSeconds(section.timestamp)}s`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={`shrink-0 ${ts.small} text-muted-foreground hover:text-foreground`}
+                                    >
+                                      ▶ {section.timestamp}
+                                    </a>
+                                  )}
+                                </div>
+                                <p className={`mt-1 ${ts.body} ${ls} text-muted-foreground`}>{section.content}</p>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       )}
                     </>

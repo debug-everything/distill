@@ -75,6 +75,7 @@
 │                DATA LAYER (Neon Postgres — always-on)                │
 │                                                                      │
 │  articles / clusters / cluster_sources / llm_usage / user_settings    │
+│  feed_sources / feed_items                                           │
 │  knowledge_items / embeddings (pgvector 768d HNSW index)             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -186,7 +187,62 @@ User clicks [Learn this] on digest cluster
     → UPDATE cluster SET status=promoted
 ```
 
-### 4.4 RAG Query Pipeline
+### 4.4 Feed Pipeline (Newsletters + RSS Sources)
+
+The feed system has two input mechanisms that share the same processing and storage:
+
+#### 4.4a Newsletter Fetch (Gmail IMAP)
+
+```
+On-demand "Fetch Newsletters" trigger
+    → IMAP connect to dedicated Gmail (App Password auth)
+    → Fetch unread emails since last fetch
+    → For each email:
+        → Parse HTML body → clean text
+        → Split multi-item newsletters into individual entries
+          (heuristic: heading/separator patterns, numbered items, HR tags)
+        → For each split item:
+            → summarize()                [chat-heavy]
+            → tag_topics()               [chat-light]
+            → INSERT feed_items (source_type='newsletter')
+    → Mark Gmail messages as read (IMAP SEEN flag)
+```
+
+**Newsletter splitting strategy:**
+Multi-item newsletters (TLDR, Morning Brew, etc.) use predictable structural
+patterns — numbered headings, horizontal rules, bold titles followed by
+descriptions. The parser uses a combination of HTML structure analysis
+(h2/h3 tags, hr elements, repeated div patterns) and text heuristics
+(numbered lists, "---" separators) to identify item boundaries. Single-topic
+newsletters (e.g., a long-form essay) are kept as one item.
+
+#### 4.4b RSS/YouTube Source Scan
+
+```
+On-demand "Scan Sources" trigger
+    → For each configured feed_source:
+        → feedparser fetch RSS/Atom feed
+        → Take 25 most recent entries (cap per source per scan)
+        → Dedup against existing feed_items by guid/url
+        → For each new entry:
+            → tag_topics(title + description)    [chat-light]
+            → Compute topic_match_score (count of tags ∩ focused_topics)
+            → INSERT feed_items (source_type='rss'|'youtube')
+    → Feed page ranks: matched items first, then "Other" section
+```
+
+**Source auto-discovery:** When a user adds a source URL, the system attempts
+to discover the RSS feed automatically:
+- YouTube channel URL → convert to `youtube.com/feeds/videos.xml?channel_id=X`
+- Blog/site URL → look for `<link rel="alternate" type="application/rss+xml">` in HTML
+- Direct RSS/Atom URL → validate and use as-is
+
+**No upfront summarization for RSS items.** Unlike newsletters (which arrive as
+full-text HTML), RSS entries only have title + short description. Full
+summarization happens when the user captures an item ("Add to Digest Queue" or
+"Save to KB"), which triggers the existing article extraction + summarize pipeline.
+
+### 4.5 RAG Query Pipeline
 
 ```
 User submits question
@@ -293,7 +349,54 @@ CREATE INDEX ON embeddings
   WITH (m = 16, ef_construction = 64);
 ```
 
-### 5.6 `llm_usage` table
+### 5.6 `feed_sources` table
+```sql
+CREATE TABLE feed_sources (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type   TEXT NOT NULL,              -- 'rss' | 'youtube' | 'newsletter'
+  name          TEXT NOT NULL,              -- display name (e.g. "TechCrunch", "TLDR")
+  url           TEXT,                       -- RSS/Atom feed URL (null for newsletter)
+  config        JSONB,                      -- type-specific config (gmail address for newsletter, channel_id for youtube, etc.)
+  last_fetched  TIMESTAMPTZ,
+  item_count    INT DEFAULT 0,              -- total items fetched from this source
+  is_active     BOOLEAN DEFAULT TRUE,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+-- For newsletter (Gmail): single row with source_type='newsletter', config={gmail_address}
+-- For RSS: one row per feed, url=feed URL
+-- For YouTube: one row per channel, url=YouTube RSS feed URL, config={channel_id, channel_name}
+```
+
+### 5.7 `feed_items` table
+```sql
+CREATE TABLE feed_items (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  feed_source_id      UUID REFERENCES feed_sources(id) ON DELETE CASCADE,
+  source_type         TEXT NOT NULL,            -- denormalized: 'rss' | 'youtube' | 'newsletter'
+  guid                TEXT,                     -- RSS guid or email Message-ID, for dedup
+  title               TEXT NOT NULL,
+  content             TEXT,                     -- extracted clean text (full for newsletters, description for RSS)
+  url                 TEXT,                     -- link to original article/video
+  source_domain       TEXT,
+  image_url           TEXT,                     -- thumbnail if available
+  published_at        TIMESTAMPTZ,             -- original publish date from RSS/email
+  -- Summarization fields (populated for newsletters; null for RSS until captured)
+  summary             TEXT,
+  bullets             JSONB,
+  content_style       TEXT,
+  information_density INT,
+  -- Topic matching
+  topic_tags          TEXT[],
+  topic_match_score   INT DEFAULT 0,           -- count of tags ∩ focused_topics
+  -- Display
+  source_name         TEXT,                    -- denormalized (e.g. "TechCrunch", "TLDR")
+  status              TEXT NOT NULL DEFAULT 'unread',  -- unread | read | archived | promoted
+  created_at          TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX feed_items_dedup ON feed_items (feed_source_id, guid) WHERE guid IS NOT NULL;
+```
+
+### 5.8 `llm_usage` table
 ```sql
 CREATE TABLE llm_usage (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -352,6 +455,14 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | `GET` | `/api/knowledge` | List knowledge base items |
 | `GET` | `/api/settings/focused-topics` | Get user's focused topics list |
 | `PUT` | `/api/settings/focused-topics` | Set user's focused topics list (max 20) |
+| `POST` | `/api/feed/fetch` | Trigger fetch (newsletters + RSS sources) |
+| `GET` | `/api/feed` | List feed items (paginated, filterable by status/source_type) |
+| `GET` | `/api/feed/fetch-status` | Fetch/processing progress |
+| `PATCH` | `/api/feed/{id}` | Update feed item status (read, archived) |
+| `POST` | `/api/feed/{id}/capture` | Capture feed item → digest queue or KB |
+| `GET` | `/api/feed/sources` | List configured feed sources |
+| `POST` | `/api/feed/sources` | Add feed source (auto-discovers RSS) |
+| `DELETE` | `/api/feed/sources/{id}` | Remove feed source |
 | `GET` | `/api/stats` | LLM usage stats (costs, tokens, calls) |
 | `GET` | `/api/llm-status` | Current LLM provider status (local/cloud, active) |
 
@@ -375,4 +486,11 @@ queued → kb_indexed
 unread → done
        → promoted (via "Learn this")
        → snoozed (re-appears next day)
+```
+
+### Feed Item
+```
+unread → read
+       → archived
+       → captured (via "Add to Digest Queue" or "Save to KB")
 ```

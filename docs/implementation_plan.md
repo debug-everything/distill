@@ -20,6 +20,7 @@
 | 8 | UX: Knowledge Page | DONE | Conversation history, conversational RAG |
 | 9 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
 | 10 | Unpack | DONE | On-demand drill-down, video timestamps, modal animation |
+| 11 | Feed: Newsletters + Sources | NOT STARTED | Gmail newsletters + RSS/YouTube aggregator → unified feed |
 
 ---
 
@@ -223,6 +224,103 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
+## Phase 11 — Feed: Newsletters + Sources — NOT STARTED
+
+Unified feed combining Gmail newsletters and RSS/YouTube source aggregation. Shared `feed_sources` + `feed_items` tables, single Feed page with topic-matched ranking.
+
+**Storybook mockups:** `frontend/src/stories/mockups/FeedMockups.stories.tsx` — 5 interactive screens covering Settings, Feed empty/scan/populated states, and newsletter strategy reference.
+
+**Design decisions:**
+- Separate `/feed` page (not mixed into digest — these items weren't manually curated)
+- On-demand fetch only (no cron until dedicated hosting)
+- Multi-item newsletters split into individual entries
+- RSS/YouTube items capped at 25 most recent per source per scan
+- RSS items are NOT summarized upfront — only `tag_topics()` for matching. Full summarization happens when user captures an item into digest queue or KB.
+- Newsletter items ARE summarized upfront (full text is available from the email body)
+- Topic matching: ranked sections — matching items on top, non-matching in "Other" section
+- **Source config lives in Settings page** (set-and-forget, not daily). Feed page shows subtle "N sources · Edit" link in header. Empty feed nudges user to Settings with deep link.
+- **Settings page** consolidates: Feed Sources, Focused Topics (from Capture), Gmail config, LLM Stats (from Capture). Gear icon in navbar.
+- **Newsletter strategy: RSS-first.** Many newsletters (Substack, Ghost, Beehiiv) have RSS feeds — add as RSS sources. Gmail IMAP only for email-only newsletters.
+
+### 11A — Shared Infrastructure: Data Model & Feed API
+- [ ] Alembic migration: `feed_sources` + `feed_items` tables (see architecture.md §5.6-5.7)
+- [ ] `feed_sources` CRUD: `GET/POST/DELETE /api/feed/sources`
+- [ ] `app/services/feed_service.py`: orchestrates fetch across all source types, background asyncio task
+- [ ] `POST /api/feed/fetch` — trigger fetch for all active sources. Background asyncio task.
+- [ ] `GET /api/feed/fetch-status` — processing progress
+- [ ] `GET /api/feed?status=&source_type=&before_date=` — paginated feed items, ordered by topic_match_score desc then published_at desc
+- [ ] `PATCH /api/feed/{id}` — update status (read, archived)
+- [ ] `POST /api/feed/{id}/capture` — capture to digest queue or KB (triggers existing article extraction + processing pipelines)
+- [ ] Topic matching: `tag_topics()` on each item, compute `topic_match_score` = count of `topic_tags ∩ focused_topics`
+
+### 11B — YouTube Channel Sources (first source type)
+- [ ] YouTube channel URL → extract channel_id → convert to RSS feed URL (`youtube.com/feeds/videos.xml?channel_id=X`)
+- [ ] `app/services/rss_fetcher.py`: `feedparser` fetch per source, cap 25 most recent entries
+- [ ] Dedup via RSS guid stored in `feed_items` (unique index on `feed_source_id + guid`)
+- [ ] Store in `feed_items` with `source_type='youtube'`, no summary (title + description from RSS)
+- [ ] YouTube thumbnails via predictable URL pattern (reuse existing logic from video_extractor)
+- [ ] Update `feed_sources.last_fetched` timestamp
+
+### 11C — Frontend: Feed Page
+Storybook mockups: `src/stories/mockups/FeedMockups.stories.tsx` (screens 2-4)
+
+- [ ] `/feed` route with nav link (Rss icon)
+- [ ] "Fetch Feed" button in header (triggers fetch for all sources)
+- [ ] **Empty state** (no sources configured): centered Rss icon, explanation text, "Set up Feed Sources" button → links to `/settings#feed-sources`. Tip nudge for focused topics.
+- [ ] **Header** (sources configured): "N sources configured · [Edit] · Last fetched Xh ago" — Edit links to Settings
+- [ ] **Scan progress**: card with per-source progress bar (source name, N/total count). Completion summary card: new items / topic matches / sources scanned, expandable per-source scan log
+- [ ] **Source type filter pills**: All / YouTube / RSS / Newsletter — toggle buttons with colored icons (red/orange/blue)
+- [ ] **Ranked sections**:
+  - **"Matching Your Topics"** (count badge) — items with `topic_match_score > 0`, matching topic badges use filled variant
+  - **"Other from Your Sources"** (outline count badge, muted header) — items with `topic_match_score == 0`
+- [ ] **Feed item cards**:
+  - Row 1: source icon + name + type badge (colored pill) + published time (right-aligned)
+  - Title (font-medium), topic tag badges (matching = filled, other = outline), "Summarized" badge for newsletter items
+  - Description snippet (text-muted-foreground)
+  - Actions row: Done / Add to Digest / Save to KB (ghost buttons) + Open Original (external link icon, right-aligned)
+- [ ] "All caught up" empty state when all items dismissed
+- [ ] Infinite scroll / cursor pagination (reuse digest pattern)
+
+### 11D — RSS Blog/Site Sources
+- [ ] Source auto-discovery for non-YouTube URLs:
+  - Blog/site URL → fetch HTML, look for `<link rel="alternate" type="application/rss+xml">`
+  - Direct RSS/Atom URL → validate with feedparser, use as-is
+- [ ] Reuses same `rss_fetcher.py` + `feed_service.py` pipeline from 11B
+- [ ] Store in `feed_items` with `source_type='rss'`
+
+### 11E — Frontend: Settings Page
+Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
+
+- [ ] `/settings` route with gear icon in navbar (not a primary nav item — sits after Ask)
+- [ ] Sectioned layout with `<Separator />` between sections:
+  - **Feed Sources** (`id="feed-sources"`): add source input with Detect button + auto-detection result card, source list with type icon/badge/stats/delete button. Empty dashed-border state.
+  - **Focused Topics** (`id="focused-topics"`): add/remove topic pills with X buttons, count + max 20 indicator. Migrated from Capture page.
+  - **Gmail Newsletters** (`id="gmail"`, `Optional` badge): read-only .env config display, recommendation text to prefer RSS sources. Auto-creates newsletter source row from `.env`.
+  - **LLM Usage** (`id="stats"`): cost tracking, token usage, provider stats. Migrated from Capture page (StatsCard component).
+- [ ] Deep-linkable section anchors — Feed empty state links to `/settings#feed-sources`
+
+### 11F — Newsletter Sources (Gmail IMAP)
+- [ ] `app/services/email_fetcher.py`: IMAP connection via `imap_tools`, fetch unread since last fetch
+- [ ] Gmail credentials from `.env` (`GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`)
+- [ ] `app/services/newsletter_parser.py`: HTML email → split into individual items
+  - HTML structure analysis (h2/h3 headings, hr separators, repeated div patterns)
+  - Text heuristics (numbered lists, `---` separators, bold title + description patterns)
+  - Extract per-item: title, content text, linked URL (if present)
+  - Single-topic newsletters kept as one item
+- [ ] Each split item → `summarize()` + `tag_topics()` via task_router (newsletters get full summarization since full text is available)
+- [ ] Dedup via Message-ID stored as `guid` in `feed_items`
+- [ ] Mark Gmail messages as SEEN after processing
+- [ ] Gmail newsletter source auto-created from `.env` config
+
+### 11G — UX Follow-up (TODO: re-evaluate later)
+- [ ] Evaluate merging Feed + Digest into a unified Feedly-like view
+- [ ] Evaluate scheduled background fetch (cron) when dedicated hosting is available
+- [ ] Source-level mute/prioritize controls
+- [ ] Per-source topic filter (only scan for specific topics from specific sources)
+- [ ] Reddit RSS support (reddit.com/r/{sub}/.rss)
+
+---
+
 ## Bug Fixes (March 2026)
 - [x] **Article recapture**: Finished articles (done/ready/kb_indexed/promoted/processing/failed) can be recaptured — re-extracts content and resets status instead of returning "duplicate"
 - [x] **Unhashable type in digest processor**: `timestamped_segments` (list of dicts) caused `set()` crash during content_attributes merge — fixed to skip merging complex lists
@@ -242,10 +340,11 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 ## Future Phases (major effort, planning needed)
 - PDF/DOCX ingestion (Phase 9)
 - Improved Quote Extraction (Phase 10)
-- **Focused Topics placement rethink**: Once topics are configured, the full CRUD UI is rarely needed but the user should still be reminded the feature exists and see what's active. Options: collapse by default showing "Focused Topics (4)" summary line that expands on click; move to a settings page with a subtle indicator on capture page; or a persistent pill strip (read-only) with an "Edit" link. Key tension: not always visible ≠ forgotten.
-- Browser extension (Phase 12)
+- ~~**Focused Topics placement rethink**~~: DECIDED — Moving to Settings page as part of Phase 11E. Feed page header shows source count + Edit link. Digest page can show read-only topic pills with Edit link to Settings.
+- Browser extension
 - Mobile swipe/touch patterns (swipe-to-dismiss, pull-to-refresh, bottom nav)
-- Cloud deployment (Phase 11)
+- Cloud deployment
+- **Unified Feed + Digest view**: Evaluate merging Feed and Digest into one view (re-evaluate after Phase 11)
 
 ---
 

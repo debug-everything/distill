@@ -57,7 +57,6 @@ Two capture modes:
 - Multi-user support
 - Mobile app
 - Social/sharing features
-- Email newsletter ingestion
 
 ---
 
@@ -146,9 +145,25 @@ Two capture modes:
 - FR-31: Videos work in both Learn Now and Consume Later modes
 - FR-32: Videos can cluster with articles on the same topic
 
-### 6.7 Document Ingestion (Future)
-- FR-33: CLI script `scripts/ingest_doc.py` for PDF/DOCX → chunk → embed → KB
-- FR-34: Web upload form alternative
+### 6.7 Feed: Newsletters + Source Aggregation (Post-MVP)
+- FR-33: Dedicated Gmail account connected via IMAP + App Password for newsletter subscriptions
+- FR-34: On-demand "Fetch Feed" triggers both IMAP pull and RSS source scan
+- FR-35: Multi-item newsletters (e.g., TLDR) are split into individual feed entries
+- FR-36: Newsletter items summarized via existing `summarize()` pipeline; RSS items show title + description only (summarized on capture)
+- FR-37: User configures RSS/YouTube sources; system auto-discovers feed URLs from site/channel URLs
+- FR-38: RSS/YouTube scan capped at 25 most recent items per source per scan
+- FR-39: Each RSS item topic-tagged via `tag_topics()` and scored against focused topics
+- FR-40: Feed page displays ranked sections: topic-matching items first, non-matching in "Other"
+- FR-41: Feed items can be captured to digest queue or KB, marked read/archived
+- FR-42: Gmail credentials stored in `.env` (GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+
+### 6.8 Document Ingestion (Future)
+- FR-43: CLI script `scripts/ingest_doc.py` for PDF/DOCX → chunk → embed → KB
+- FR-44: Web upload form alternative
+
+### 6.8 Document Ingestion (Future)
+- FR-43: CLI script `scripts/ingest_doc.py` for PDF/DOCX → chunk → embed → KB
+- FR-44: Web upload form alternative
 
 ---
 
@@ -174,6 +189,9 @@ Two capture modes:
 | Article (public) | MVP | Paste URL | readability-lxml | Via Learn Now or Learn This |
 | Paywalled article | MVP | Paste URL | Partial (teaser only) | Low quality warning |
 | YouTube video | Post-MVP | Paste URL | youtube-transcript-api | Via Learn Now or Learn This |
+| Email newsletter | Post-MVP | IMAP fetch (Gmail) | HTML parse + split | Via Feed → Capture to KB |
+| RSS article | Post-MVP | RSS/Atom feed | feedparser (title+desc only) | Via Feed → Capture to Digest/KB |
+| YouTube (subscribed) | Post-MVP | YouTube channel RSS | feedparser (title+desc only) | Via Feed → Capture to Digest/KB |
 | PDF document | Future | CLI script / upload | PyMuPDF | Direct to KB |
 | DOCX document | Future | CLI script / upload | python-docx | Direct to KB |
 

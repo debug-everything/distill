@@ -339,7 +339,7 @@ On-demand per-item summarization for feed items that lack descriptions (common f
 - [ ] Frontend: "Summarize" button on FeedItemCard, inline expansion with loading skeleton
 - [ ] Handle edge cases: already summarized (return cached), no URL, extraction failure
 
-### 11H — Debounced Auto-Process on Capture — NOT STARTED
+### 11H — Debounced Auto-Process on Capture — DONE
 Auto-trigger digest processing after feed items are captured, with a configurable debounce delay.
 
 **Problem:** Current flow requires manual "Process" trigger after capturing feed items. User captures items from Feed, switches to Digest, and sees nothing — has to go back and trigger processing.
@@ -352,11 +352,11 @@ Auto-trigger digest processing after feed items are captured, with a configurabl
 - Existing manual "Process" button still works (unchanged)
 
 **Tasks:**
-- [ ] `schedule_deferred_processing(delay_seconds)` function in `digest_processor.py` — manages a cancelable asyncio timer
-- [ ] Call `schedule_deferred_processing()` from feed capture endpoint (`POST /api/feed/{item_id}/capture`) on success
-- [ ] Also call from article capture endpoint (`POST /api/articles`) for consistency
-- [ ] Configurable delay via env var `DIGEST_AUTO_PROCESS_DELAY_SECONDS` (default 30, 0 = disabled)
-- [ ] Frontend: show processing indicator on Digest page when auto-process kicks in (reuses existing polling)
+- [x] `schedule_deferred_processing()` function in `digest_processor.py` — cancelable asyncio timer that resets on each call
+- [x] Call from feed capture endpoint (`POST /api/feed/{item_id}/capture`) on `consume_later` captures
+- [x] Call from article capture endpoint (`POST /api/articles`) for `consume_later` captures (both new and recapture paths)
+- [x] Configurable delay via env var `DIGEST_AUTO_PROCESS_DELAY_SECONDS` (default 30, 0 = disabled)
+- [x] Frontend: no changes needed — Digest page already polls `/api/digests/processing-status` and shows progress when processing is active
 
 ### 11I — UX Follow-up (TODO: re-evaluate later)
 - [ ] Evaluate merging Feed + Digest into a unified Feedly-like view

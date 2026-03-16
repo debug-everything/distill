@@ -80,12 +80,11 @@ export default function Home() {
     refetchInterval: 5000,
   });
 
-  // Digest processing status — only poll when active
+  // Digest processing status — fast poll when active, slow poll to detect auto-processing
   const digestStatus = useQuery<ProcessingStatus>({
     queryKey: ["digestStatus"],
     queryFn: fetchProcessingStatus,
-    refetchInterval: digestPolling ? 2000 : false,
-    enabled: digestPolling,
+    refetchInterval: digestPolling ? 2000 : 10000,
   });
 
   // Learn Now status — only poll when active
@@ -96,12 +95,13 @@ export default function Home() {
     enabled: learnNowPolling,
   });
 
-  // Stop polling when processing completes + track elapsed time
+  // Detect processing start/stop + track elapsed time
   const prevDigestProcessing = useRef(false);
   useEffect(() => {
     const isActive = digestStatus.data?.is_processing ?? false;
     if (isActive && !prevDigestProcessing.current) {
-      // Just started
+      // Just started (manual or auto) — switch to fast polling
+      setDigestPolling(true);
       digestStartedAt.current = Date.now();
       setDigestElapsed(0);
     } else if (isActive && digestStartedAt.current) {

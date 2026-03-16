@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from datetime import date, datetime, timezone
 
 from sqlalchemy import select, update
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 # In-memory lock to prevent concurrent processing
 _processing_lock = asyncio.Lock()
+
+# Debounced auto-processing
+_deferred_task: asyncio.Task | None = None
+_DEFERRED_DELAY = int(os.environ.get("DIGEST_AUTO_PROCESS_DELAY_SECONDS", "30"))
 
 
 class ProcessingStatus:
@@ -47,6 +52,30 @@ def start_processing_in_background() -> dict:
 
     asyncio.get_event_loop().create_task(_background_process())
     return {"ok": True, "detail": "Processing started"}
+
+
+def schedule_deferred_processing():
+    """Schedule digest processing after a debounce delay.
+
+    Each call resets the timer. When the delay expires without further calls,
+    start_processing_in_background() fires. Disabled when delay is 0.
+    """
+    global _deferred_task
+
+    if _DEFERRED_DELAY <= 0:
+        return
+
+    # Cancel any pending timer
+    if _deferred_task and not _deferred_task.done():
+        _deferred_task.cancel()
+        logger.debug("Deferred processing timer reset")
+
+    async def _deferred():
+        await asyncio.sleep(_DEFERRED_DELAY)
+        logger.info(f"Deferred processing timer fired after {_DEFERRED_DELAY}s")
+        start_processing_in_background()
+
+    _deferred_task = asyncio.get_event_loop().create_task(_deferred())
 
 
 async def _background_process():

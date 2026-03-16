@@ -406,4 +406,9 @@ async def capture_feed_item(
     )
     await db.commit()
 
+    # Schedule deferred digest processing for consume_later captures
+    if req.mode == "consume_later":
+        from app.services.digest_processor import schedule_deferred_processing
+        schedule_deferred_processing()
+
     return {"ok": True, "capture_result": capture_response}

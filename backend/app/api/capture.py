@@ -155,6 +155,8 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
             if req.mode == "learn_now":
                 start_learn_now_in_background([str(existing.id)])
                 return JSONResponse(status_code=202, content=response_data.model_dump())
+            from app.services.digest_processor import schedule_deferred_processing
+            schedule_deferred_processing()
             return response_data
         return CaptureResponse(ok=True, duplicate=True)
 
@@ -196,6 +198,10 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
     if req.mode == "learn_now":
         start_learn_now_in_background([str(article.id)])
         return JSONResponse(status_code=202, content=response_data.model_dump())
+
+    # Consume later: schedule deferred digest processing
+    from app.services.digest_processor import schedule_deferred_processing
+    schedule_deferred_processing()
 
     return response_data
 

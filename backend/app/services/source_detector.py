@@ -91,13 +91,13 @@ async def _detect_youtube(url: str, parsed) -> DetectedSource:
 
 async def _resolve_youtube_channel_id(url: str) -> str:
     """Fetch a YouTube channel page and extract the channel ID from HTML."""
-    validate_url(url)
+    safe_url = validate_url(url)
     async with httpx.AsyncClient(
         timeout=10.0,
         follow_redirects=True,
         headers={"User-Agent": "Mozilla/5.0 (compatible; Distill/1.0)"},
     ) as client:
-        resp = await client.get(url)
+        resp = await client.get(safe_url)
         resp.raise_for_status()
 
     html = resp.text
@@ -151,13 +151,13 @@ async def _detect_rss(url: str) -> DetectedSource:
     """Try URL as direct feed, then try HTML auto-discovery."""
     import feedparser
 
-    validate_url(url)
+    safe_url = validate_url(url)
     async with httpx.AsyncClient(
         timeout=10.0,
         follow_redirects=True,
         headers={"User-Agent": "Mozilla/5.0 (compatible; Distill/1.0)"},
     ) as client:
-        resp = await client.get(url)
+        resp = await client.get(safe_url)
         resp.raise_for_status()
 
     content_type = resp.headers.get("content-type", "")

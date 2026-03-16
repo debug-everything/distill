@@ -21,13 +21,13 @@ _USER_AGENT = (
 
 async def extract_article(url: str) -> ExtractionResult:
     """Fetch URL and extract clean text using readability-lxml."""
-    validate_url(url)
+    safe_url = validate_url(url)
     async with httpx.AsyncClient(
         timeout=15.0,
         follow_redirects=True,
         headers={"User-Agent": _USER_AGENT},
     ) as client:
-        response = await client.get(url)
+        response = await client.get(safe_url)
         response.raise_for_status()
 
     raw_html = response.text

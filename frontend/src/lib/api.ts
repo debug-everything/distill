@@ -133,6 +133,7 @@ export interface DigestSource {
   content_type: string;
   extraction_quality: string;
   image_url: string | null;
+  created_at: string | null;
 }
 
 export interface UnpackSection {
@@ -346,4 +347,146 @@ export interface StatsResponse {
 
 export function fetchStats(): Promise<StatsResponse> {
   return apiFetch<StatsResponse>("/api/stats");
+}
+
+// Feed Sources
+export interface FeedSource {
+  id: string;
+  source_type: string;
+  name: string;
+  url: string | null;
+  config: Record<string, unknown> | null;
+  last_fetched: string | null;
+  item_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SourceDetectResult {
+  source_type: string;
+  name: string;
+  feed_url: string;
+  original_url: string;
+}
+
+export function fetchFeedSources(): Promise<FeedSource[]> {
+  return apiFetch<FeedSource[]>("/api/feed/sources");
+}
+
+export function createFeedSource(data: {
+  source_type: string;
+  name: string;
+  url?: string;
+  config?: Record<string, unknown>;
+}): Promise<FeedSource> {
+  return apiFetch<FeedSource>("/api/feed/sources", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteFeedSource(sourceId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/feed/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
+export function detectFeedSource(url: string): Promise<SourceDetectResult> {
+  return apiFetch<SourceDetectResult>("/api/feed/sources/detect", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
+// Feed Items
+export interface FeedItem {
+  id: string;
+  feed_source_id: string;
+  source_type: string;
+  guid: string | null;
+  title: string;
+  content: string | null;
+  url: string | null;
+  source_domain: string | null;
+  image_url: string | null;
+  published_at: string | null;
+  summary: string | null;
+  bullets: string[] | null;
+  content_style: string | null;
+  information_density: number | null;
+  topic_tags: string[];
+  topic_match_score: number;
+  source_name: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface FeedListResponse {
+  items: FeedItem[];
+  has_more: boolean;
+}
+
+export interface FeedFetchStatus {
+  is_processing: boolean;
+  total: number;
+  current: number;
+  stage: string;
+  llm_mode: "local" | "cloud" | null;
+  last_result: {
+    ok: boolean;
+    sources_scanned?: number;
+    new_items?: number;
+    topic_matches?: number;
+    detail?: string;
+  } | null;
+  source_progress: {
+    name: string;
+    source_type: string;
+    new_items: number;
+    status: string;
+    error?: string;
+  }[];
+}
+
+export function triggerFeedFetch(): Promise<{ ok: boolean; detail?: string }> {
+  return apiFetch("/api/feed/fetch", { method: "POST" });
+}
+
+export function fetchFeedFetchStatus(): Promise<FeedFetchStatus> {
+  return apiFetch<FeedFetchStatus>("/api/feed/fetch-status");
+}
+
+export function fetchFeedItems(params?: {
+  status?: string;
+  source_type?: string;
+  before_date?: string;
+  limit?: number;
+}): Promise<FeedListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.source_type) searchParams.set("source_type", params.source_type);
+  if (params?.before_date) searchParams.set("before_date", params.before_date);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch<FeedListResponse>(`/api/feed${qs ? `?${qs}` : ""}`);
+}
+
+export function updateFeedItemStatus(
+  itemId: string,
+  status: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/feed/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function captureFeedItem(
+  itemId: string,
+  mode: "consume_later" | "learn_now",
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/feed/${itemId}/capture`, {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
 }

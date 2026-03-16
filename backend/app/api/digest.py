@@ -33,6 +33,7 @@ class SourceItem(BaseModel):
     content_type: str
     extraction_quality: str
     image_url: str | None = None
+    created_at: str | None = None
 
 
 class ClusterItem(BaseModel):
@@ -120,6 +121,7 @@ def _cluster_to_item(c: Cluster) -> ClusterItem:
                 content_type=s.content_type,
                 extraction_quality=s.article.extraction_quality if s.article else "ok",
                 image_url=s.image_url,
+                created_at=s.article.created_at.isoformat() if s.article and s.article.created_at else None,
             )
             for s in c.sources
         ],

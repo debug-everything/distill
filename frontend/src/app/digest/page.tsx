@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ExternalLink,
   Flame,
+  Hash,
   LayoutGrid,
   LayoutList,
   Layers,
@@ -19,6 +20,7 @@ import {
   Loader2,
   Rows3,
   ScanLine,
+  Star,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -100,6 +102,27 @@ function hasPaywall(cluster: DigestCluster): boolean {
   return cluster.sources.some((s) => s.extraction_quality === "low");
 }
 
+function getSourceDate(cluster: DigestCluster): string | null {
+  const dates = cluster.sources
+    .map((s) => s.created_at)
+    .filter((d): d is string => !!d);
+  if (dates.length === 0) return null;
+  dates.sort();
+  return dates[0];
+}
+
+function formatTimeAgo(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffHours = Math.floor(diffMs / 3600000);
+  if (diffHours < 1) return "just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 const STYLE_LABELS: Record<string, string> = {
   tutorial: "Tutorial",
   demo: "Demo",
@@ -175,68 +198,72 @@ function DefaultTile({
       className={`cursor-pointer transition-colors hover:bg-muted/50 ${cluster.is_merged ? "border-2" : ""}`}
       onClick={onClick}
     >
-      <div className="flex">
-        <div className="min-w-0 flex-1">
-          <CardHeader className="pb-2">
-            <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              {cluster.is_merged && (
-                <Badge variant="secondary" className="shrink-0">
-                  <Layers className="mr-1 h-3 w-3" />
-                  {cluster.source_count} sources
-                </Badge>
-              )}
-              {cluster.topic_tags.map((tag) => (
-                <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0">
-                  {tag}
-                </Badge>
-              ))}
-              {hasVideoSource(cluster) && (
-                <Badge variant="outline" className="shrink-0">
-                  <Video className="mr-1 h-3 w-3" />
-                  Video
-                </Badge>
-              )}
-              {hasAutoTranscript(cluster) && (
-                <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
-                  Auto-transcript
-                </Badge>
-              )}
-              {hasPaywall(cluster) && (
-                <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
-                  <AlertTriangle className="mr-1 h-3 w-3" />
-                  Paywall
-                </Badge>
-              )}
-              <ContentBadges cluster={cluster} />
-            </div>
-            <CardTitle className={ts.heading}>{cluster.title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={`mb-3 ${ts.body} leading-relaxed text-muted-foreground`}>
-              {clampText(cluster.summary || cluster.headline, SUMMARY_CHAR_LIMIT)}
+      <CardHeader className="pb-2">
+        <CardTitle className={ts.heading}>{cluster.title}</CardTitle>
+        {(() => {
+          const date = getSourceDate(cluster);
+          const domain = cluster.sources[0]?.source_name;
+          if (!date && !domain) return null;
+          return (
+            <p className={`mt-1 ${ts.small} text-muted-foreground`}>
+              {domain}{date && domain ? " · " : ""}{date ? formatTimeAgo(date) : ""}
             </p>
-            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="sm" onClick={onDone}>
-                <Check className="mr-1.5 h-4 w-4" />
-                Done
-              </Button>
-            </div>
-          </CardContent>
+          );
+        })()}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          {cluster.is_merged && (
+            <Badge variant="secondary" className="shrink-0">
+              <Layers className="mr-1 h-3 w-3" />
+              {cluster.source_count} sources
+            </Badge>
+          )}
+          {cluster.topic_tags.map((tag) => (
+            <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0">
+              {tag}
+            </Badge>
+          ))}
+          {hasVideoSource(cluster) && (
+            <Badge variant="outline" className="shrink-0">
+              <Video className="mr-1 h-3 w-3" />
+              Video
+            </Badge>
+          )}
+          {hasAutoTranscript(cluster) && (
+            <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
+              Auto-transcript
+            </Badge>
+          )}
+          {hasPaywall(cluster) && (
+            <Badge variant="outline" className="shrink-0 border-amber-300 text-amber-600">
+              <AlertTriangle className="mr-1 h-3 w-3" />
+              Paywall
+            </Badge>
+          )}
+          <ContentBadges cluster={cluster} />
         </div>
+      </CardHeader>
+      <CardContent>
         {imageUrl && (
-          <div className="hidden shrink-0 p-4 sm:block">
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-28 w-40 rounded-md object-cover"
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
+          <img
+            src={imageUrl}
+            alt=""
+            className="hidden sm:block float-right ml-3 mb-2 h-24 w-36 rounded-md object-cover"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
         )}
-      </div>
+        <p className={`mb-3 ${ts.body} leading-relaxed text-muted-foreground`}>
+          {clampText(cluster.summary || cluster.headline, SUMMARY_CHAR_LIMIT)}
+        </p>
+        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" size="sm" onClick={onDone}>
+            <Check className="mr-1.5 h-4 w-4" />
+            Done
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   );
 }
@@ -274,7 +301,18 @@ function CompactTile({
           />
         )}
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
+          {(() => {
+            const date = getSourceDate(cluster);
+            const domain = cluster.sources[0]?.source_name;
+            if (!date && !domain) return null;
+            return (
+              <p className={`${ts.small} text-muted-foreground`}>
+                {domain}{date && domain ? " · " : ""}{date ? formatTimeAgo(date) : ""}
+              </p>
+            );
+          })()}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {cluster.topic_tags.map((tag) => (
               <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0 text-xs">
                 {tag}
@@ -304,7 +342,6 @@ function CompactTile({
             )}
             <ContentBadges cluster={cluster} />
           </div>
-          <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
         </div>
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDone}>
@@ -336,7 +373,18 @@ function MinimalTile({
     >
       <CardContent className="flex items-center gap-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
+          {(() => {
+            const date = getSourceDate(cluster);
+            const domain = cluster.sources[0]?.source_name;
+            if (!date && !domain) return null;
+            return (
+              <p className={`${ts.small} text-muted-foreground`}>
+                {domain}{date && domain ? " · " : ""}{date ? formatTimeAgo(date) : ""}
+              </p>
+            );
+          })()}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {cluster.topic_tags.map((tag) => (
               <Badge key={tag} variant={focusedSet.has(tag) ? "default" : "outline"} className="shrink-0 text-xs">
                 {tag}
@@ -366,7 +414,6 @@ function MinimalTile({
             )}
             <ContentBadges cluster={cluster} />
           </div>
-          <p className={`font-medium leading-snug ${ts.body}`}>{cluster.title}</p>
         </div>
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDone}>
@@ -549,133 +596,237 @@ export default function DigestPage() {
     ? "grid gap-3 grid-cols-1 sm:grid-cols-2"
     : "flex flex-col gap-3";
 
+  // Split topics into focused vs other for the sidebar
+  const focusedTopicList = allTopics.filter((t) => focusedSet.has(t));
+  const otherTopicList = allTopics.filter((t) => !focusedSet.has(t));
+
+  // Topic counts from visible (non-done) clusters
+  const topicCounts: Record<string, number> = {};
+  for (const c of allClusters.filter((c) => c.status !== "done")) {
+    for (const t of c.topic_tags) {
+      topicCounts[t] = (topicCounts[t] || 0) + 1;
+    }
+  }
+
   return (
-    <div className="min-h-screen">
-      {/* Header + display controls */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Digest</h1>
+    <div className="flex gap-6">
+      {/* ── Left sidebar (desktop only) ── */}
+      <aside className="hidden w-48 shrink-0 md:block">
+        <div className="sticky top-20 space-y-1">
+          {/* All */}
+          <button
+            type="button"
+            className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
+              activeTopic === null
+                ? "bg-secondary font-medium"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            }`}
+            onClick={() => setActiveTopic(null)}
+          >
+            <span>All Topics</span>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {visibleClusters.length}
+            </span>
+          </button>
 
-        <div className="flex items-center gap-1">
-          {FORMAT_OPTIONS.map(({ value, icon: Icon, label }) => (
-            <Button
-              key={value}
-              variant={tileFormat === value ? "secondary" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setTileFormat(value)}
-              title={label}
-            >
-              <Icon className="h-4 w-4" />
-            </Button>
-          ))}
+          {focusedTopicList.length > 0 && (
+            <>
+              <Separator className="my-2" />
+              <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Focused
+              </p>
+              {focusedTopicList.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors ${
+                    activeTopic === topic
+                      ? "bg-secondary font-medium"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                  onClick={() => setActiveTopic(activeTopic === topic ? null : topic)}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                    <span className="truncate">{topic}</span>
+                  </span>
+                  {(topicCounts[topic] ?? 0) > 0 && (
+                    <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                      {topicCounts[topic]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
 
-          <Separator orientation="vertical" className="mx-1 h-5" />
+          {otherTopicList.length > 0 && (
+            <>
+              <Separator className="my-2" />
+              <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Other
+              </p>
+              {otherTopicList.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors ${
+                    activeTopic === topic
+                      ? "bg-secondary font-medium"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                  onClick={() => setActiveTopic(activeTopic === topic ? null : topic)}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Hash className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{topic}</span>
+                  </span>
+                  {(topicCounts[topic] ?? 0) > 0 && (
+                    <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                      {topicCounts[topic]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      </aside>
 
-          <div className="hidden sm:flex sm:items-center sm:gap-1">
-            {LAYOUT_OPTIONS.map(({ value, icon: Icon, label }) => (
+      {/* ── Main content ── */}
+      <div className="min-w-0 flex-1">
+        {/* Header + display controls */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold">Digest</h1>
+
+          <div className="flex items-center gap-1">
+            {FORMAT_OPTIONS.map(({ value, icon: Icon, label }) => (
               <Button
                 key={value}
-                variant={tileLayout === value ? "secondary" : "ghost"}
+                variant={tileFormat === value ? "secondary" : "ghost"}
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => setTileLayout(value)}
+                onClick={() => setTileFormat(value)}
                 title={label}
               >
                 <Icon className="h-4 w-4" />
               </Button>
             ))}
-          </div>
 
-          <span className={`ml-2 ${ts.small} text-muted-foreground`}>
-            {visibleClusters.length} unread
-          </span>
-        </div>
-      </div>
+            <Separator orientation="vertical" className="mx-1 h-5" />
 
-      {/* Topic filters */}
-      {allTopics.length > 0 && (
-        <div className="mb-6 flex flex-wrap gap-2">
-          <Badge
-            variant={activeTopic === null ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setActiveTopic(null)}
-          >
-            All ({visibleClusters.length})
-          </Badge>
-          {allTopics.map((topic) => (
-            <Badge
-              key={topic}
-              variant={activeTopic === topic ? "default" : "outline"}
-              className="cursor-pointer"
-              onClick={() =>
-                setActiveTopic(activeTopic === topic ? null : topic)
-              }
-            >
-              {topic}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      {/* Loading */}
-      {digest.isLoading && (
-        <p className={`${ts.body} text-muted-foreground`}>Loading digest...</p>
-      )}
-
-      {/* Empty state — differentiate "all caught up" vs "truly empty" */}
-      {dateGroups.length === 0 && !digest.isLoading && allClusters.length > 0 && (
-        <p className={`${ts.body} text-muted-foreground`}>
-          All caught up! Every cluster has been marked done.
-        </p>
-      )}
-      {dateGroups.length === 0 && !digest.isLoading && allClusters.length === 0 && (
-        <p className={`${ts.body} text-muted-foreground`}>
-          No digest yet.{" "}
-          <Link href="/" className="underline">
-            Add articles
-          </Link>{" "}
-          and generate a digest to see clusters here.
-        </p>
-      )}
-
-      {/* Clusters grouped by date */}
-      <div className="space-y-8">
-        {dateGroups.map((group) => (
-          <section key={group.date}>
-            <h2 className={`mb-3 font-semibold ${ts.body} text-muted-foreground`}>
-              {formatDate(group.date)}
-            </h2>
-            <div className={containerClass}>
-              {group.clusters.map((cluster) => (
-                <TileComponent
-                  key={cluster.id}
-                  cluster={cluster}
-                  onClick={() => { setSelectedCluster(cluster); setUnpackedView(false); }}
-                  onDone={() => done.mutate(cluster.id)}
-                  ts={ts}
-                  focusedSet={focusedSet}
-                />
+            <div className="hidden sm:flex sm:items-center sm:gap-1">
+              {LAYOUT_OPTIONS.map(({ value, icon: Icon, label }) => (
+                <Button
+                  key={value}
+                  variant={tileLayout === value ? "secondary" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setTileLayout(value)}
+                  title={label}
+                >
+                  <Icon className="h-4 w-4" />
+                </Button>
               ))}
             </div>
-          </section>
-        ))}
-      </div>
 
-      {/* Load More */}
-      {digest.hasNextPage && (
-        <div className="mt-8 flex justify-center">
-          <Button
-            variant="outline"
-            onClick={() => digest.fetchNextPage()}
-            disabled={digest.isFetchingNextPage}
-          >
-            {digest.isFetchingNextPage ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : null}
-            Load More
-          </Button>
+            <span className={`ml-2 ${ts.small} text-muted-foreground`}>
+              {visibleClusters.length} unread
+            </span>
+          </div>
         </div>
-      )}
+
+        {/* Mobile topic filters (hidden on desktop where sidebar shows) */}
+        {allTopics.length > 0 && (
+          <div className="mb-6 flex flex-wrap gap-2 md:hidden">
+            <Badge
+              variant={activeTopic === null ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() => setActiveTopic(null)}
+            >
+              All ({visibleClusters.length})
+            </Badge>
+            {allTopics.map((topic) => (
+              <Badge
+                key={topic}
+                variant={activeTopic === topic ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() =>
+                  setActiveTopic(activeTopic === topic ? null : topic)
+                }
+              >
+                {topic}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {/* Loading */}
+        {digest.isLoading && (
+          <p className={`${ts.body} text-muted-foreground`}>Loading digest...</p>
+        )}
+
+        {/* Empty state — differentiate "all caught up" vs "truly empty" */}
+        {dateGroups.length === 0 && !digest.isLoading && allClusters.length > 0 && (
+          <p className={`${ts.body} text-muted-foreground`}>
+            All caught up! Every cluster has been marked done.
+          </p>
+        )}
+        {dateGroups.length === 0 && !digest.isLoading && allClusters.length === 0 && (
+          <p className={`${ts.body} text-muted-foreground`}>
+            No digest yet.{" "}
+            <Link href="/" className="underline">
+              Add articles
+            </Link>{" "}
+            and generate a digest to see clusters here.
+          </p>
+        )}
+
+        {/* Clusters grouped by date */}
+        <div className="space-y-8">
+          {dateGroups.map((group) => (
+            <section key={group.date}>
+              <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-3 bg-background/95 px-1 py-2 backdrop-blur-sm">
+                <h2 className={`shrink-0 font-semibold ${ts.body}`}>
+                  {formatDate(group.date)}
+                </h2>
+                <Separator className="flex-1" />
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {group.clusters.length}
+                </span>
+              </div>
+              <div className={containerClass}>
+                {group.clusters.map((cluster) => (
+                  <TileComponent
+                    key={cluster.id}
+                    cluster={cluster}
+                    onClick={() => { setSelectedCluster(cluster); setUnpackedView(false); }}
+                    onDone={() => done.mutate(cluster.id)}
+                    ts={ts}
+                    focusedSet={focusedSet}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {/* Load More */}
+        {digest.hasNextPage && (
+          <div className="mt-8 flex justify-center">
+            <Button
+              variant="outline"
+              onClick={() => digest.fetchNextPage()}
+              disabled={digest.isFetchingNextPage}
+            >
+              {digest.isFetchingNextPage ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : null}
+              Load More
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Reading modal */}
       <Dialog

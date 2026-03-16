@@ -132,12 +132,19 @@ interface FeedItem {
   matchScore: number;
   description: string;
   publishedAt: string;
+  publishedDate: Date;
   url: string;
   thumbnail?: string;
   hasSummary: boolean;
 }
 
+// Helper to create dates relative to "now" for the mockup
+const MOCK_NOW = new Date(2026, 2, 16, 14, 0, 0); // Mar 16 2026, 2pm
+const hoursAgo = (h: number) => new Date(MOCK_NOW.getTime() - h * 3600_000);
+const daysAgo = (d: number, h = 10) => new Date(MOCK_NOW.getTime() - (d * 24 + h) * 3600_000);
+
 const MOCK_FEED_ITEMS: FeedItem[] = [
+  // ── Today ──
   {
     id: "f1",
     title: "I built a AI agent that mass-buys my groceries",
@@ -148,7 +155,23 @@ const MOCK_FEED_ITEMS: FeedItem[] = [
     description:
       "A fast-paced walkthrough of building an autonomous shopping agent using GPT-5's tool orchestration API, Playwright for browser automation, and a Rust backend for speed.",
     publishedAt: "3h ago",
+    publishedDate: hoursAgo(3),
     url: "https://youtube.com/watch?v=abc123",
+    thumbnail: "",
+    hasSummary: false,
+  },
+  {
+    id: "f6",
+    title: "Why I Switched from VS Code to Zed",
+    sourceName: "Theo - t3.gg",
+    sourceType: "youtube",
+    topicTags: ["Developer Tools"],
+    matchScore: 0,
+    description:
+      "After 3 months with Zed as my daily driver, here's what I love, what I miss, and why I'm not going back.",
+    publishedAt: "1h ago",
+    publishedDate: hoursAgo(1),
+    url: "https://youtube.com/watch?v=ghi789",
     thumbnail: "",
     hasSummary: false,
   },
@@ -162,21 +185,9 @@ const MOCK_FEED_ITEMS: FeedItem[] = [
     description:
       "Breaking down the Rust 2025 edition changes — new borrow checker improvements, async closures stabilized, and the controversial decision to add optional GC.",
     publishedAt: "5h ago",
+    publishedDate: hoursAgo(5),
     url: "https://youtube.com/watch?v=def456",
     thumbnail: "",
-    hasSummary: false,
-  },
-  {
-    id: "f3",
-    title: "The Architecture Behind Bluesky's Federation",
-    sourceName: "Simon Willison",
-    sourceType: "rss",
-    topicTags: ["Distributed Systems", "Architecture"],
-    matchScore: 1,
-    description:
-      "Detailed analysis of Bluesky's AT Protocol, comparing its federation model to ActivityPub and examining the trade-offs in their distributed data architecture.",
-    publishedAt: "8h ago",
-    url: "https://simonwillison.net/2026/Mar/14/bluesky-federation",
     hasSummary: false,
   },
   {
@@ -189,35 +200,8 @@ const MOCK_FEED_ITEMS: FeedItem[] = [
     description:
       "NVIDIA's Q1 earnings beat expectations with $42B revenue driven by hyperscaler AI infrastructure spending. Stock hits new ATH.",
     publishedAt: "6h ago",
+    publishedDate: hoursAgo(6),
     url: "https://tldr.tech/tech/nvidia-q1-2026",
-    hasSummary: false,
-  },
-  {
-    id: "f5",
-    title:
-      "Building Reliable Distributed Systems with Deterministic Simulation Testing",
-    sourceName: "ByteByteGo",
-    sourceType: "newsletter",
-    topicTags: ["Distributed Systems", "Testing"],
-    matchScore: 1,
-    description:
-      "How TigerBeetle and FoundationDB use deterministic simulation to test distributed consensus without flaky integration tests.",
-    publishedAt: "12h ago",
-    url: "https://blog.bytebytego.com/p/deterministic-simulation",
-    hasSummary: true,
-  },
-  {
-    id: "f6",
-    title: "Why I Switched from VS Code to Zed",
-    sourceName: "Theo - t3.gg",
-    sourceType: "youtube",
-    topicTags: ["Developer Tools"],
-    matchScore: 0,
-    description:
-      "After 3 months with Zed as my daily driver, here's what I love, what I miss, and why I'm not going back.",
-    publishedAt: "1h ago",
-    url: "https://youtube.com/watch?v=ghi789",
-    thumbnail: "",
     hasSummary: false,
   },
   {
@@ -230,20 +214,38 @@ const MOCK_FEED_ITEMS: FeedItem[] = [
     description:
       "The new M5 Ultra targets AI workstation users with 512GB unified memory and a 128-core Neural Engine.",
     publishedAt: "4h ago",
-    url: "https://techcrunch.com/2026/03/14/m5-ultra",
+    publishedDate: hoursAgo(4),
+    url: "https://techcrunch.com/2026/03/16/m5-ultra",
+    hasSummary: false,
+  },
+  // ── Yesterday ──
+  {
+    id: "f3",
+    title: "The Architecture Behind Bluesky's Federation",
+    sourceName: "Simon Willison",
+    sourceType: "rss",
+    topicTags: ["Distributed Systems", "Architecture"],
+    matchScore: 1,
+    description:
+      "Detailed analysis of Bluesky's AT Protocol, comparing its federation model to ActivityPub and examining the trade-offs in their distributed data architecture.",
+    publishedAt: "1d ago",
+    publishedDate: daysAgo(1, 6),
+    url: "https://simonwillison.net/2026/Mar/15/bluesky-federation",
     hasSummary: false,
   },
   {
-    id: "f8",
-    title: "The End of the Junior Developer?",
-    sourceName: "The Pragmatic Engineer",
+    id: "f5",
+    title:
+      "Building Reliable Distributed Systems with Deterministic Simulation Testing",
+    sourceName: "ByteByteGo",
     sourceType: "newsletter",
-    topicTags: ["Career", "AI & ML"],
+    topicTags: ["Distributed Systems", "Testing"],
     matchScore: 1,
     description:
-      "Analyzing hiring data from 200 companies: junior roles down 35% YoY, but mid-level roles with AI skills are up 60%.",
+      "How TigerBeetle and FoundationDB use deterministic simulation to test distributed consensus without flaky integration tests.",
     publishedAt: "1d ago",
-    url: "https://newsletter.pragmaticengineer.com/p/junior-developer-2026",
+    publishedDate: daysAgo(1, 2),
+    url: "https://blog.bytebytego.com/p/deterministic-simulation",
     hasSummary: true,
   },
   {
@@ -255,9 +257,40 @@ const MOCK_FEED_ITEMS: FeedItem[] = [
     matchScore: 0,
     description:
       "With Safari 20 adding full support, container queries now work across all major browsers. Here's how to migrate from media queries.",
-    publishedAt: "7h ago",
-    url: "https://techcrunch.com/2026/03/14/css-container-queries",
+    publishedAt: "1d ago",
+    publishedDate: daysAgo(1, 7),
+    url: "https://techcrunch.com/2026/03/15/css-container-queries",
     hasSummary: false,
+  },
+  {
+    id: "f11",
+    title: "How Discord Scaled to 200M Users with Rust",
+    sourceName: "Fireship",
+    sourceType: "youtube",
+    topicTags: ["Rust", "Distributed Systems"],
+    matchScore: 2,
+    description:
+      "Discord's journey from Go to Rust for their Read States service, reducing tail latencies from 2s to 50ms and halving memory usage.",
+    publishedAt: "1d ago",
+    publishedDate: daysAgo(1, 4),
+    url: "https://youtube.com/watch?v=jkl012",
+    thumbnail: "",
+    hasSummary: false,
+  },
+  // ── This week (2-6 days ago) ──
+  {
+    id: "f8",
+    title: "The End of the Junior Developer?",
+    sourceName: "The Pragmatic Engineer",
+    sourceType: "newsletter",
+    topicTags: ["Career", "AI & ML"],
+    matchScore: 1,
+    description:
+      "Analyzing hiring data from 200 companies: junior roles down 35% YoY, but mid-level roles with AI skills are up 60%.",
+    publishedAt: "3d ago",
+    publishedDate: daysAgo(3),
+    url: "https://newsletter.pragmaticengineer.com/p/junior-developer-2026",
+    hasSummary: true,
   },
   {
     id: "f10",
@@ -268,9 +301,53 @@ const MOCK_FEED_ITEMS: FeedItem[] = [
     matchScore: 0,
     description:
       "Cloudflare's edge runtime adds WebGPU support, enabling ML inference at the edge without cold starts. Early benchmarks show 3x faster than WASM approach.",
-    publishedAt: "10h ago",
-    url: "https://simonwillison.net/2026/Mar/14/cloudflare-webgpu",
+    publishedAt: "4d ago",
+    publishedDate: daysAgo(4),
+    url: "https://simonwillison.net/2026/Mar/12/cloudflare-webgpu",
     hasSummary: false,
+  },
+  {
+    id: "f12",
+    title: "Tesla Q1 Delivery Numbers Miss Estimates",
+    sourceName: "TLDR",
+    sourceType: "rss",
+    topicTags: ["US Stocks", "EVs"],
+    matchScore: 1,
+    description:
+      "Tesla delivered 387K vehicles in Q1 2026, below the 410K consensus estimate. Stock drops 8% in after-hours trading.",
+    publishedAt: "5d ago",
+    publishedDate: daysAgo(5),
+    url: "https://tldr.tech/tech/tesla-q1-deliveries",
+    hasSummary: false,
+  },
+  // ── Older (7+ days) ──
+  {
+    id: "f13",
+    title: "SQLite Turns 25: The Most Deployed Database",
+    sourceName: "Simon Willison",
+    sourceType: "rss",
+    topicTags: ["Databases", "Architecture"],
+    matchScore: 0,
+    description:
+      "A retrospective on SQLite's 25 years: from Tcl extension to the most widely deployed database engine, now used in aircraft flight software.",
+    publishedAt: "8d ago",
+    publishedDate: daysAgo(8),
+    url: "https://simonwillison.net/2026/Mar/08/sqlite-25",
+    hasSummary: false,
+  },
+  {
+    id: "f14",
+    title: "Practical Guide to RAFT Consensus",
+    sourceName: "ByteByteGo",
+    sourceType: "newsletter",
+    topicTags: ["Distributed Systems"],
+    matchScore: 1,
+    description:
+      "Visual walkthrough of RAFT leader election, log replication, and safety proofs with practical implementation tips for production systems.",
+    publishedAt: "10d ago",
+    publishedDate: daysAgo(10),
+    url: "https://blog.bytebytego.com/p/raft-consensus-guide",
+    hasSummary: true,
   },
 ];
 
@@ -1292,6 +1369,339 @@ function NewsletterStrategyScreen() {
   );
 }
 
+// ─── Date grouping helpers ────────────────────────────────────────────────────
+
+type DateGroup = { label: string; items: FeedItem[] };
+
+function groupByDate(items: FeedItem[], now: Date = MOCK_NOW): DateGroup[] {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const todayStart = startOfDay(now);
+  const yesterdayStart = new Date(todayStart.getTime() - 86400_000);
+  const weekStart = new Date(todayStart.getTime() - 6 * 86400_000);
+
+  const buckets: Record<string, FeedItem[]> = {
+    Today: [],
+    Yesterday: [],
+    "This Week": [],
+    Older: [],
+  };
+
+  for (const item of items) {
+    const d = item.publishedDate;
+    if (d >= todayStart) buckets["Today"].push(item);
+    else if (d >= yesterdayStart) buckets["Yesterday"].push(item);
+    else if (d >= weekStart) buckets["This Week"].push(item);
+    else buckets["Older"].push(item);
+  }
+
+  // Sort within each bucket: topic-matched first, then by recency
+  const sortBucket = (a: FeedItem, b: FeedItem) => {
+    if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+    return b.publishedDate.getTime() - a.publishedDate.getTime();
+  };
+
+  return Object.entries(buckets)
+    .filter(([, items]) => items.length > 0)
+    .map(([label, items]) => ({ label, items: items.sort(sortBucket) }));
+}
+
+function formatRelativeTime(d: Date, now: Date = MOCK_NOW): string {
+  const diffMs = now.getTime() - d.getTime();
+  const diffH = Math.floor(diffMs / 3600_000);
+  if (diffH < 1) return "just now";
+  if (diffH < 24) return `${diffH}h ago`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD === 1) return "yesterday";
+  if (diffD < 7) return `${diffD}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ─── Screen 6: Feed with Left Sidebar Navigation ───────────────────────────
+
+function FeedLeftNavScreen() {
+  const [page, setPage] = useState<Page>("feed");
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  // Compute counts per source
+  const sourceCounts = MOCK_SOURCES.reduce(
+    (acc, s) => {
+      acc[s.id] = MOCK_FEED_ITEMS.filter(
+        (i) => i.sourceName === s.name && !dismissed.has(i.id),
+      ).length;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const typeCounts = {
+    youtube: MOCK_FEED_ITEMS.filter((i) => i.sourceType === "youtube" && !dismissed.has(i.id)).length,
+    rss: MOCK_FEED_ITEMS.filter((i) => i.sourceType === "rss" && !dismissed.has(i.id)).length,
+    newsletter: MOCK_FEED_ITEMS.filter((i) => i.sourceType === "newsletter" && !dismissed.has(i.id)).length,
+  };
+
+  // Filter items
+  const filtered = MOCK_FEED_ITEMS.filter((item) => {
+    if (dismissed.has(item.id)) return false;
+    if (selectedSource) {
+      const source = MOCK_SOURCES.find((s) => s.id === selectedSource);
+      if (source && item.sourceName !== source.name) return false;
+    }
+    if (selectedType && item.sourceType !== selectedType) return false;
+    return true;
+  });
+
+  const totalUnread = MOCK_FEED_ITEMS.filter((i) => !dismissed.has(i.id)).length;
+  const dateGroups = groupByDate(filtered);
+  const matchingCount = filtered.filter((i) => i.matchScore > 0).length;
+
+  return (
+    <Shell active={page} onNavigate={setPage} feedCount={totalUnread}>
+      <div className="flex gap-6">
+        {/* Left sidebar */}
+        <aside className="hidden w-56 shrink-0 md:block">
+          <div className="sticky top-20 space-y-1">
+            {/* All items */}
+            <button
+              type="button"
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
+                !selectedSource && !selectedType
+                  ? "bg-secondary font-medium"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              }`}
+              onClick={() => {
+                setSelectedSource(null);
+                setSelectedType(null);
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <Rss className="h-4 w-4" />
+                All Sources
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {totalUnread}
+              </span>
+            </button>
+
+            <Separator className="my-2" />
+
+            {/* By type */}
+            <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              By Type
+            </p>
+            {(
+              [
+                { type: "youtube", label: "YouTube", icon: Youtube, color: "text-red-500" },
+                { type: "rss", label: "RSS", icon: Globe, color: "text-orange-500" },
+                { type: "newsletter", label: "Newsletters", icon: Mail, color: "text-blue-500" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.type}
+                type="button"
+                className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  selectedType === t.type && !selectedSource
+                    ? "bg-secondary font-medium"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setSelectedType(selectedType === t.type ? null : t.type);
+                  setSelectedSource(null);
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <t.icon className={`h-3.5 w-3.5 ${t.color}`} />
+                  {t.label}
+                </span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {typeCounts[t.type]}
+                </span>
+              </button>
+            ))}
+
+            <Separator className="my-2" />
+
+            {/* By source */}
+            <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Sources
+            </p>
+            {MOCK_SOURCES.map((source) => (
+              <button
+                key={source.id}
+                type="button"
+                className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  selectedSource === source.id
+                    ? "bg-secondary font-medium"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setSelectedSource(selectedSource === source.id ? null : source.id);
+                  setSelectedType(null);
+                }}
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <SourceTypeIcon type={source.type} className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{source.name}</span>
+                </span>
+                {sourceCounts[source.id] > 0 && (
+                  <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                    {sourceCounts[source.id]}
+                  </span>
+                )}
+              </button>
+            ))}
+
+            <Separator className="my-2" />
+
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              onClick={() => setPage("settings")}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Manage Sources
+            </button>
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <div className="min-w-0 flex-1 space-y-5">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold">
+                {selectedSource
+                  ? MOCK_SOURCES.find((s) => s.id === selectedSource)?.name ?? "Feed"
+                  : selectedType
+                    ? { youtube: "YouTube", rss: "RSS Feeds", newsletter: "Newsletters" }[selectedType]
+                    : "Feed"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+                {matchingCount > 0 && ` · ${matchingCount} matching your topics`}
+              </p>
+            </div>
+            <Button size="sm">
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Fetch
+            </Button>
+          </div>
+
+          {/* Mobile filter pills (hidden on desktop where sidebar shows) */}
+          <div className="flex gap-2 md:hidden">
+            <Button
+              variant={!selectedType ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => { setSelectedType(null); setSelectedSource(null); }}
+            >
+              All
+            </Button>
+            <Button
+              variant={selectedType === "youtube" ? "secondary" : "outline"}
+              size="sm"
+              className="gap-1"
+              onClick={() => { setSelectedType("youtube"); setSelectedSource(null); }}
+            >
+              <Youtube className="h-3.5 w-3.5 text-red-500" />
+              YouTube
+            </Button>
+            <Button
+              variant={selectedType === "rss" ? "secondary" : "outline"}
+              size="sm"
+              className="gap-1"
+              onClick={() => { setSelectedType("rss"); setSelectedSource(null); }}
+            >
+              <Globe className="h-3.5 w-3.5 text-orange-500" />
+              RSS
+            </Button>
+          </div>
+
+          {/* Date-grouped sections */}
+          {dateGroups.map((group) => (
+            <section key={group.label}>
+              <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-3 bg-background/95 px-1 py-2 backdrop-blur-sm">
+                <h2 className="text-sm font-semibold">{group.label}</h2>
+                <Separator className="flex-1" />
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {group.items.length}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {group.items.map((item) => (
+                  <Card
+                    key={item.id}
+                    className={
+                      item.matchScore > 0
+                        ? "border-l-2 border-l-primary/40"
+                        : ""
+                    }
+                  >
+                    <CardContent className="space-y-2 py-3">
+                      <div className="flex items-center gap-2">
+                        <SourceTypeIcon type={item.sourceType} className="h-3.5 w-3.5" />
+                        <span className="text-xs text-muted-foreground">
+                          {item.sourceName}
+                        </span>
+                        <SourceTypeBadge type={item.sourceType} />
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {formatRelativeTime(item.publishedDate)}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium">{item.title}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {item.topicTags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant={FOCUSED_TOPICS.includes(tag) ? "default" : "outline"}
+                            className="text-xs"
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {item.description}
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDismissed((prev) => new Set(prev).add(item.id))}
+                        >
+                          <Check className="mr-1 h-3.5 w-3.5" />
+                          Done
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <BookOpen className="mr-1 h-3.5 w-3.5" />
+                          Add to Digest
+                        </Button>
+                        <a
+                          href={item.url}
+                          className="ml-auto text-muted-foreground hover:text-foreground"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          {filtered.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Check className="mb-3 h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">All caught up!</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
 // ─── Stories ─────────────────────────────────────────────────────────────────
 
 const meta: Meta = {
@@ -1327,4 +1737,9 @@ export const FeedPopulated: Story = {
 export const NewsletterStrategy: Story = {
   name: "5. Reference — Newsletter RSS vs Gmail",
   render: () => <NewsletterStrategyScreen />,
+};
+
+export const FeedLeftNav: Story = {
+  name: "6. Feed — Left Nav + Date Groups",
+  render: () => <FeedLeftNavScreen />,
 };

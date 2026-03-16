@@ -21,6 +21,7 @@ dependencies = [
     "scipy>=1.14.0",
     "truststore>=0.10.4",
     "youtube-transcript-api>=1.2.4",
+    "feedparser>=6.0.12",
 ]
 
 [tool.ruff]

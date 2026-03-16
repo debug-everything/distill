@@ -5,6 +5,7 @@ This is the ONLY file that knows about model names, providers, or routing rules.
 All other code calls these functions; never LiteLLM/OpenAI directly.
 """
 
+import asyncio
 import json
 import logging
 
@@ -313,15 +314,19 @@ Text:
         model = _get_chat_model("heavy")
         logger.info(f"unpack_sections: using local model {model}")
         try:
-            response = await litellm.acompletion(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                api_base=settings.ollama_base_url,
-                temperature=0.3,
-                response_format={"type": "json_object"},
+            response = await asyncio.wait_for(
+                litellm.acompletion(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    api_base=settings.ollama_base_url,
+                    temperature=0.3,
+                    response_format={"type": "json_object"},
+                    num_ctx=16384,
+                ),
+                timeout=45,
             )
             llm_tracker.record(is_local=True)
             record_usage(response, "unpack", model, is_local=True)

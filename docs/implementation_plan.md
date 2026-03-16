@@ -20,7 +20,7 @@
 | 8 | UX: Knowledge Page | DONE | Conversation history, conversational RAG |
 | 9 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
 | 10 | Unpack | DONE | On-demand drill-down, video timestamps, modal animation |
-| 11 | Feed: Newsletters + Sources | NOT STARTED | Gmail newsletters + RSS/YouTube aggregator → unified feed |
+| 11 | Feed: Newsletters + Sources | MOSTLY DONE | Gmail newsletters + RSS/YouTube aggregator → unified feed |
 
 ---
 
@@ -242,62 +242,64 @@ Unified feed combining Gmail newsletters and RSS/YouTube source aggregation. Sha
 - **Settings page** consolidates: Feed Sources, Focused Topics (from Capture), Gmail config, LLM Stats (from Capture). Gear icon in navbar.
 - **Newsletter strategy: RSS-first.** Many newsletters (Substack, Ghost, Beehiiv) have RSS feeds — add as RSS sources. Gmail IMAP only for email-only newsletters.
 
-### 11A — Shared Infrastructure: Data Model & Feed API
-- [ ] Alembic migration: `feed_sources` + `feed_items` tables (see architecture.md §5.6-5.7)
-- [ ] `feed_sources` CRUD: `GET/POST/DELETE /api/feed/sources`
-- [ ] `app/services/feed_service.py`: orchestrates fetch across all source types, background asyncio task
-- [ ] `POST /api/feed/fetch` — trigger fetch for all active sources. Background asyncio task.
-- [ ] `GET /api/feed/fetch-status` — processing progress
-- [ ] `GET /api/feed?status=&source_type=&before_date=` — paginated feed items, ordered by topic_match_score desc then published_at desc
-- [ ] `PATCH /api/feed/{id}` — update status (read, archived)
-- [ ] `POST /api/feed/{id}/capture` — capture to digest queue or KB (triggers existing article extraction + processing pipelines)
-- [ ] Topic matching: `tag_topics()` on each item, compute `topic_match_score` = count of `topic_tags ∩ focused_topics`
+### 11A — Shared Infrastructure: Data Model & Feed API — DONE
+- [x] Alembic migration: `feed_sources` + `feed_items` tables (see architecture.md §5.6-5.7)
+- [x] `feed_sources` CRUD: `GET/POST/DELETE /api/feed/sources`
+- [x] `app/services/feed_service.py`: orchestrates fetch across all source types, background asyncio task
+- [x] `POST /api/feed/fetch` — trigger fetch for all active sources. Background asyncio task.
+- [x] `GET /api/feed/fetch-status` — processing progress
+- [x] `GET /api/feed?status=&source_type=&before_date=` — paginated feed items, ordered by topic_match_score desc then published_at desc
+- [x] `PATCH /api/feed/{id}` — update status (read, archived)
+- [x] `POST /api/feed/{id}/capture` — capture to digest queue or KB (triggers existing article extraction + processing pipelines)
+- [x] Topic matching: `tag_topics()` on each item, compute `topic_match_score` = count of `topic_tags ∩ focused_topics`
 
-### 11B — YouTube Channel Sources (first source type)
-- [ ] YouTube channel URL → extract channel_id → convert to RSS feed URL (`youtube.com/feeds/videos.xml?channel_id=X`)
-- [ ] `app/services/rss_fetcher.py`: `feedparser` fetch per source, cap 25 most recent entries
-- [ ] Dedup via RSS guid stored in `feed_items` (unique index on `feed_source_id + guid`)
-- [ ] Store in `feed_items` with `source_type='youtube'`, no summary (title + description from RSS)
-- [ ] YouTube thumbnails via predictable URL pattern (reuse existing logic from video_extractor)
-- [ ] Update `feed_sources.last_fetched` timestamp
+### 11B — YouTube Channel Sources (first source type) — DONE
+- [x] YouTube channel URL → extract channel_id → convert to RSS feed URL (`youtube.com/feeds/videos.xml?channel_id=X`)
+- [x] `app/services/source_detector.py`: auto-detects YouTube channels (/@handle, /channel/UCxxx, /c/name, /user/name), resolves to RSS URL via HTML scraping
+- [x] `POST /api/feed/sources/detect` — auto-detection endpoint (also handles RSS/blog sources for 11D)
+- [x] `app/services/rss_fetcher.py`: `feedparser` fetch per source, cap 25 most recent entries
+- [x] Dedup via RSS guid stored in `feed_items` (unique index on `feed_source_id + guid`)
+- [x] Store in `feed_items` with `source_type='youtube'`, no summary (title + description from RSS)
+- [x] YouTube thumbnails via predictable URL pattern (reuse existing logic from video_extractor)
+- [x] Update `feed_sources.last_fetched` timestamp
 
-### 11C — Frontend: Feed Page
+### 11C — Frontend: Feed Page — DONE
 Storybook mockups: `src/stories/mockups/FeedMockups.stories.tsx` (screens 2-4)
 
-- [ ] `/feed` route with nav link (Rss icon)
-- [ ] "Fetch Feed" button in header (triggers fetch for all sources)
-- [ ] **Empty state** (no sources configured): centered Rss icon, explanation text, "Set up Feed Sources" button → links to `/settings#feed-sources`. Tip nudge for focused topics.
-- [ ] **Header** (sources configured): "N sources configured · [Edit] · Last fetched Xh ago" — Edit links to Settings
-- [ ] **Scan progress**: card with per-source progress bar (source name, N/total count). Completion summary card: new items / topic matches / sources scanned, expandable per-source scan log
-- [ ] **Source type filter pills**: All / YouTube / RSS / Newsletter — toggle buttons with colored icons (red/orange/blue)
-- [ ] **Ranked sections**:
+- [x] `/feed` route with nav link (Rss icon)
+- [x] "Fetch Feed" button in header (triggers fetch for all sources)
+- [x] **Empty state** (no sources configured): centered Rss icon, explanation text, "Set up Feed Sources" button → links to `/settings#feed-sources`. Tip nudge for focused topics.
+- [x] **Header** (sources configured): "N sources configured · [Edit] · Last fetched Xh ago" — Edit links to Settings
+- [x] **Scan progress**: card with per-source progress bar (source name, N/total count). Completion summary toast: new items / topic matches / sources scanned
+- [x] **Source type filter pills**: All / YouTube / RSS / Newsletter — toggle buttons with colored icons (red/orange/blue)
+- [x] **Ranked sections**:
   - **"Matching Your Topics"** (count badge) — items with `topic_match_score > 0`, matching topic badges use filled variant
   - **"Other from Your Sources"** (outline count badge, muted header) — items with `topic_match_score == 0`
-- [ ] **Feed item cards**:
+- [x] **Feed item cards**:
   - Row 1: source icon + name + type badge (colored pill) + published time (right-aligned)
-  - Title (font-medium), topic tag badges (matching = filled, other = outline), "Summarized" badge for newsletter items
+  - Title (font-medium), topic tag badges (matching = filled, other = outline)
   - Description snippet (text-muted-foreground)
   - Actions row: Done / Add to Digest / Save to KB (ghost buttons) + Open Original (external link icon, right-aligned)
-- [ ] "All caught up" empty state when all items dismissed
-- [ ] Infinite scroll / cursor pagination (reuse digest pattern)
+- [x] "All caught up" empty state when all items dismissed
+- [ ] Infinite scroll / cursor pagination (deferred — initial load of 50 items sufficient for now)
 
-### 11D — RSS Blog/Site Sources
-- [ ] Source auto-discovery for non-YouTube URLs:
+### 11D — RSS Blog/Site Sources — DONE
+- [x] Source auto-discovery for non-YouTube URLs:
   - Blog/site URL → fetch HTML, look for `<link rel="alternate" type="application/rss+xml">`
   - Direct RSS/Atom URL → validate with feedparser, use as-is
-- [ ] Reuses same `rss_fetcher.py` + `feed_service.py` pipeline from 11B
-- [ ] Store in `feed_items` with `source_type='rss'`
+- [x] Reuses same `rss_fetcher.py` + `feed_service.py` pipeline from 11B
+- [x] Store in `feed_items` with `source_type='rss'`
 
-### 11E — Frontend: Settings Page
+### 11E — Frontend: Settings Page — DONE
 Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
 
-- [ ] `/settings` route with gear icon in navbar (not a primary nav item — sits after Ask)
-- [ ] Sectioned layout with `<Separator />` between sections:
+- [x] `/settings` route with gear icon in navbar (not a primary nav item — sits after Ask)
+- [x] Sectioned layout with `<Separator />` between sections:
   - **Feed Sources** (`id="feed-sources"`): add source input with Detect button + auto-detection result card, source list with type icon/badge/stats/delete button. Empty dashed-border state.
   - **Focused Topics** (`id="focused-topics"`): add/remove topic pills with X buttons, count + max 20 indicator. Migrated from Capture page.
-  - **Gmail Newsletters** (`id="gmail"`, `Optional` badge): read-only .env config display, recommendation text to prefer RSS sources. Auto-creates newsletter source row from `.env`.
   - **LLM Usage** (`id="stats"`): cost tracking, token usage, provider stats. Migrated from Capture page (StatsCard component).
-- [ ] Deep-linkable section anchors — Feed empty state links to `/settings#feed-sources`
+- [x] Deep-linkable section anchors — Feed empty state links to `/settings#feed-sources`
+- [ ] **Gmail Newsletters** (`id="gmail"`, `Optional` badge): deferred to Phase 11F
 
 ### 11F — Newsletter Sources (Gmail IMAP)
 - [ ] `app/services/email_fetcher.py`: IMAP connection via `imap_tools`, fetch unread since last fetch

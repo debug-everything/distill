@@ -132,6 +132,56 @@ class UserSetting(Base):
     value: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 
+class FeedSource(Base):
+    __tablename__ = "feed_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)  # rss | youtube | newsletter
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    config: Mapped[dict | None] = mapped_column(JSONB)
+    last_fetched: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    feed_items: Mapped[list["FeedItem"]] = relationship(
+        back_populates="feed_source", cascade="all, delete-orphan"
+    )
+
+
+class FeedItem(Base):
+    __tablename__ = "feed_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    feed_source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("feed_sources.id", ondelete="CASCADE")
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)  # denormalized
+    guid: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    source_domain: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary: Mapped[str | None] = mapped_column(Text)
+    bullets: Mapped[dict | None] = mapped_column(JSONB)
+    content_style: Mapped[str | None] = mapped_column(Text)
+    information_density: Mapped[int | None] = mapped_column(Integer)
+    topic_tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    topic_match_score: Mapped[int] = mapped_column(Integer, default=0)
+    source_name: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="unread")  # unread | read | archived | captured
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    feed_source: Mapped["FeedSource"] = relationship(back_populates="feed_items")
+
+
 class Embedding(Base):
     __tablename__ = "embeddings"
 

@@ -8,6 +8,8 @@ import {
   Newspaper,
   Search,
   Plus,
+  Rss,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReadingSettings } from "@/components/reading-settings";
@@ -53,6 +55,16 @@ export function Navbar() {
               <span className="hidden sm:inline">Digest</span>
             </Button>
           </Link>
+          <Link href="/feed">
+            <Button
+              variant={pathname === "/feed" ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-1.5"
+            >
+              <Rss className="h-4 w-4" />
+              <span className="hidden sm:inline">Feed</span>
+            </Button>
+          </Link>
           <Link href="/knowledge">
             <Button
               variant={pathname === "/knowledge" ? "secondary" : "ghost"}
@@ -60,7 +72,7 @@ export function Navbar() {
               className="gap-1.5"
             >
               <Search className="h-4 w-4" />
-              <span className="hidden sm:inline">Knowledge</span>
+              <span className="hidden sm:inline">Ask</span>
             </Button>
           </Link>
         </nav>
@@ -71,6 +83,15 @@ export function Navbar() {
             active={llmStatus.data?.is_active ?? false}
           />
           <ReadingSettings />
+          <Link href="/settings">
+            <Button
+              variant={pathname === "/settings" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
       </div>
     </header>

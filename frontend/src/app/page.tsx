@@ -22,8 +22,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useSettings, textSizeClasses } from "@/lib/settings-store";
-import { FocusedTopics } from "@/components/focused-topics";
-import { StatsCard } from "@/components/stats-card";
 import {
   captureUrl,
   captureBatch,
@@ -532,14 +530,6 @@ export default function Home() {
         )}
       </section>
 
-      <Separator className="my-8" />
-
-      {/* Focused Topics */}
-      <FocusedTopics />
-
-      <Separator className="my-8" />
-
-      <StatsCard />
     </div>
   );
 }

@@ -7,10 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from app.core.log_utils import sanitize
-from app.core.security import validate_url
 from app.services.content_extractor import ExtractionResult
-
-_ALLOWED_YT_HOSTS = {"www.youtube.com", "youtube.com", "youtu.be"}
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +150,7 @@ async def extract_video(url: str) -> ExtractionResult:
             raise ValueError(f"Could not fetch transcript for video {video_id}: {e}")
 
     # Title + description via oembed (lightweight, no API key)
-    title, description = await _fetch_metadata(url)
+    title, description = await _fetch_metadata(video_id)
 
     # Thumbnail: predictable YouTube URL pattern
     image_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
@@ -200,16 +197,16 @@ async def extract_video(url: str) -> ExtractionResult:
     )
 
 
-async def _fetch_metadata(url: str) -> tuple[str | None, str | None]:
-    """Fetch video title and description via YouTube oembed + page scrape."""
+async def _fetch_metadata(video_id: str) -> tuple[str | None, str | None]:
+    """Fetch video title and description via YouTube oembed + page scrape.
+
+    Takes a validated video_id (not a raw user URL) to prevent SSRF.
+    URLs are constructed from the known-safe video_id.
+    """
     import httpx
 
-    # SSRF guard: only allow requests to known YouTube hosts
-    validate_url(url)
-    parsed = urlparse(url)
-    if parsed.hostname not in _ALLOWED_YT_HOSTS:
-        logger.warning("Blocked non-YouTube URL in _fetch_metadata: %s", sanitize(url))
-        return None, None
+    # Construct safe URLs from validated video ID — no user input flows into HTTP calls
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
 
     title = None
     description = None
@@ -219,13 +216,13 @@ async def _fetch_metadata(url: str) -> tuple[str | None, str | None]:
             # oembed gives us the title
             resp = await client.get(
                 "https://www.youtube.com/oembed",
-                params={"url": url, "format": "json"},
+                params={"url": watch_url, "format": "json"},
             )
             if resp.status_code == 200:
                 title = resp.json().get("title")
 
             # Scrape description from og:description meta tag (no API key needed)
-            page_resp = await client.get(url)
+            page_resp = await client.get(watch_url)
             if page_resp.status_code == 200:
                 desc_match = re.search(
                     r'<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]*)"',

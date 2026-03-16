@@ -30,14 +30,19 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │  FASTAPI BACKEND (localhost:8000)                                    │
 │                                                                      │
-│  POST /api/capture        — Submit URL (learn_now or consume_later)  │
-│  POST /api/digest/process — Trigger on-demand digest processing      │
-│  GET  /api/digest         — Get today's clusters                     │
-│  GET  /api/digest/{date}  — Digest history                           │
-│  POST /api/digest/{id}/promote — Learn this → embed to KB           │
-│  POST /api/digest/{id}/done    — Archive cluster                    │
-│  POST /api/rag/query      — RAG natural language query               │
-│  GET  /api/knowledge      — List knowledge base items                │
+│  POST  /api/articles                — Capture URL (learn_now or consume_later) │
+│  POST  /api/articles/batch          — Batch capture (max 50 URLs)             │
+│  GET   /api/articles                — List articles by mode/status            │
+│  GET   /api/articles/indexing-status — Learn Now progress                     │
+│  POST  /api/digests/process         — Trigger on-demand digest processing     │
+│  GET   /api/digests?before_date=    — Get clusters (cursor-paginated)         │
+│  GET   /api/digests/processing-status — Digest processing progress            │
+│  PATCH /api/digests/{id}            — Update cluster status (done, etc.)      │
+│  POST  /api/digests/{id}/promote    — Learn this → embed to KB               │
+│  POST  /api/knowledge/query         — RAG natural language query              │
+│  GET   /api/knowledge               — List knowledge base items              │
+│  GET   /api/stats                   — LLM usage stats (costs, tokens, calls) │
+│  GET   /api/llm-status              — Current LLM provider status            │
 │  GET  /health             — Health check                             │
 │                                                                      │
 │    ┌─────────────────────────────┐                                   │
@@ -69,7 +74,8 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                DATA LAYER (Neon Postgres — always-on)                │
 │                                                                      │
-│  articles / clusters / cluster_sources                               │
+│  articles / clusters / cluster_sources / llm_usage / user_settings    │
+│  feed_sources / feed_items                                           │
 │  knowledge_items / embeddings (pgvector 768d HNSW index)             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -173,7 +179,7 @@ URL submitted with mode=learn_now
 
 ```
 User clicks [Learn this] on digest cluster
-    → POST /api/digest/{id}/promote
+    → POST /api/digests/{id}/promote
     → fetch full clean_text from articles in cluster
     → chunk_text(clean_text)               [no LLM]
     → embed(chunks)                        [embedder]
@@ -181,16 +187,78 @@ User clicks [Learn this] on digest cluster
     → UPDATE cluster SET status=promoted
 ```
 
-### 4.4 RAG Query Pipeline
+### 4.4 Feed Pipeline (Newsletters + RSS Sources)
+
+The feed system has two input mechanisms that share the same processing and storage:
+
+#### 4.4a Newsletter Fetch (Gmail IMAP)
+
+```
+On-demand "Fetch Newsletters" trigger
+    → IMAP connect to dedicated Gmail (App Password auth)
+    → Fetch unread emails since last fetch
+    → For each email:
+        → Parse HTML body → clean text
+        → Split multi-item newsletters into individual entries
+          (heuristic: heading/separator patterns, numbered items, HR tags)
+        → For each split item:
+            → summarize()                [chat-heavy]
+            → tag_topics()               [chat-light]
+            → INSERT feed_items (source_type='newsletter')
+    → Mark Gmail messages as read (IMAP SEEN flag)
+```
+
+**Newsletter splitting strategy:**
+Multi-item newsletters (TLDR, Morning Brew, etc.) use predictable structural
+patterns — numbered headings, horizontal rules, bold titles followed by
+descriptions. The parser uses a combination of HTML structure analysis
+(h2/h3 tags, hr elements, repeated div patterns) and text heuristics
+(numbered lists, "---" separators) to identify item boundaries. Single-topic
+newsletters (e.g., a long-form essay) are kept as one item.
+
+#### 4.4b RSS/YouTube Source Scan
+
+```
+On-demand "Scan Sources" trigger
+    → For each configured feed_source:
+        → feedparser fetch RSS/Atom feed
+        → Take 25 most recent entries (cap per source per scan)
+        → Dedup against existing feed_items by guid/url
+        → For each new entry:
+            → tag_topics(title + description)    [chat-light]
+            → Compute topic_match_score (count of tags ∩ focused_topics)
+            → INSERT feed_items (source_type='rss'|'youtube')
+    → Feed page ranks: matched items first, then "Other" section
+```
+
+**Source auto-discovery:** When a user adds a source URL, the system attempts
+to discover the RSS feed automatically:
+- YouTube channel URL → convert to `youtube.com/feeds/videos.xml?channel_id=X`
+- Blog/site URL → look for `<link rel="alternate" type="application/rss+xml">` in HTML
+- Direct RSS/Atom URL → validate and use as-is
+
+**No upfront summarization for RSS items.** Unlike newsletters (which arrive as
+full-text HTML), RSS entries only have title + short description. Full
+summarization happens when the user captures an item ("Add to Digest Queue" or
+"Save to KB"), which triggers the existing article extraction + summarize pipeline.
+
+### 4.5 RAG Query Pipeline
 
 ```
 User submits question
-    → POST /api/rag/query {question}
+    → POST /api/knowledge/query {question, history?}
     → embed(question)                      [embedder — SAME model as docs]
     → pgvector: SELECT chunks ORDER BY embedding <=> query_vec LIMIT 5
-    → rag_answer(question, context_chunks) [chat-heavy]
+    → rag_answer(question, context_chunks, history?) [chat-heavy]
     → return {answer, citations[{chunk_text, source_title, source_url}]}
 ```
+
+**Conversation history**: The client maintains an ephemeral array of Q&A pairs
+(session-scoped, not persisted). On each query, recent history is sent alongside
+the question. The backend trims to a ~4000-character budget (whole exchanges only,
+walking backward, minimum 1 exchange) and injects into the `rag_answer()` prompt
+as conversation context. This enables follow-up questions like "tell me more" or
+"how does that compare?" without server-side session state.
 
 ---
 
@@ -210,6 +278,7 @@ CREATE TABLE articles (
   status              TEXT NOT NULL DEFAULT 'queued',    -- queued|processing|ready|done|promoted|kb_indexed
   extraction_quality  TEXT DEFAULT 'ok',                 -- 'ok' | 'low'
   source_domain       TEXT,
+  content_attributes  JSONB,                             -- extraction-time metadata (video demo cues, etc.)
   created_at          TIMESTAMPTZ DEFAULT now(),
   processed_at        TIMESTAMPTZ
 );
@@ -226,6 +295,9 @@ CREATE TABLE clusters (
   bullets         JSONB NOT NULL,
   quotes          JSONB,
   topic_tags      TEXT[],
+  content_style   TEXT,                  -- tutorial|demo|opinion|interview|news|analysis|narrative|review
+  information_density INT,              -- 1-10, how dense/actionable the content is
+  content_attributes  JSONB,            -- merged extraction attributes (video demo cues, etc.)
   source_count    INT DEFAULT 1,
   is_merged       BOOLEAN DEFAULT FALSE,
   status          TEXT DEFAULT 'unread',   -- unread | done | promoted | snoozed
@@ -277,6 +349,77 @@ CREATE INDEX ON embeddings
   WITH (m = 16, ef_construction = 64);
 ```
 
+### 5.6 `feed_sources` table
+```sql
+CREATE TABLE feed_sources (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_type   TEXT NOT NULL,              -- 'rss' | 'youtube' | 'newsletter'
+  name          TEXT NOT NULL,              -- display name (e.g. "TechCrunch", "TLDR")
+  url           TEXT,                       -- RSS/Atom feed URL (null for newsletter)
+  config        JSONB,                      -- type-specific config (gmail address for newsletter, channel_id for youtube, etc.)
+  last_fetched  TIMESTAMPTZ,
+  item_count    INT DEFAULT 0,              -- total items fetched from this source
+  is_active     BOOLEAN DEFAULT TRUE,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+-- For newsletter (Gmail): single row with source_type='newsletter', config={gmail_address}
+-- For RSS: one row per feed, url=feed URL
+-- For YouTube: one row per channel, url=YouTube RSS feed URL, config={channel_id, channel_name}
+```
+
+### 5.7 `feed_items` table
+```sql
+CREATE TABLE feed_items (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  feed_source_id      UUID REFERENCES feed_sources(id) ON DELETE CASCADE,
+  source_type         TEXT NOT NULL,            -- denormalized: 'rss' | 'youtube' | 'newsletter'
+  guid                TEXT,                     -- RSS guid or email Message-ID, for dedup
+  title               TEXT NOT NULL,
+  content             TEXT,                     -- extracted clean text (full for newsletters, description for RSS)
+  url                 TEXT,                     -- link to original article/video
+  source_domain       TEXT,
+  image_url           TEXT,                     -- thumbnail if available
+  published_at        TIMESTAMPTZ,             -- original publish date from RSS/email
+  -- Summarization fields (populated for newsletters; null for RSS until captured)
+  summary             TEXT,
+  bullets             JSONB,
+  content_style       TEXT,
+  information_density INT,
+  -- Topic matching
+  topic_tags          TEXT[],
+  topic_match_score   INT DEFAULT 0,           -- count of tags ∩ focused_topics
+  -- Display
+  source_name         TEXT,                    -- denormalized (e.g. "TechCrunch", "TLDR")
+  status              TEXT NOT NULL DEFAULT 'unread',  -- unread | read | archived | promoted
+  created_at          TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX feed_items_dedup ON feed_items (feed_source_id, guid) WHERE guid IS NOT NULL;
+```
+
+### 5.8 `llm_usage` table
+```sql
+CREATE TABLE llm_usage (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_type     TEXT NOT NULL,      -- embed, summarize, tag_topics, score_quality, rag_answer
+  model         TEXT NOT NULL,      -- e.g. ollama/qwen2.5:14b, gpt-4o-mini
+  provider      TEXT NOT NULL,      -- local | cloud
+  input_tokens  INT NOT NULL DEFAULT 0,
+  output_tokens INT NOT NULL DEFAULT 0,
+  cost_usd      FLOAT NOT NULL DEFAULT 0.0,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 5.7 `user_settings` table
+```sql
+CREATE TABLE user_settings (
+  key   TEXT PRIMARY KEY,
+  value JSONB NOT NULL
+);
+-- Single-user key-value store for server-side settings.
+-- Used for: focused_topics (list of user interest topics injected into LLM prompts).
+```
+
 ---
 
 ## 6. Deployment Environments
@@ -299,14 +442,29 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check (db, ollama, env status) |
-| `POST` | `/api/capture` | Submit URL with mode (learn_now / consume_later) |
-| `POST` | `/api/digest/process` | Trigger on-demand digest processing |
-| `GET` | `/api/digest` | Get today's clusters |
-| `GET` | `/api/digest/{date}` | Get clusters for specific date |
-| `POST` | `/api/digest/{id}/promote` | Learn this → embed cluster to KB |
-| `POST` | `/api/digest/{id}/done` | Archive cluster |
-| `POST` | `/api/rag/query` | RAG natural language query |
+| `POST` | `/api/articles` | Capture single URL with mode (learn_now / consume_later) |
+| `POST` | `/api/articles/batch` | Batch capture (max 50 URLs) |
+| `GET` | `/api/articles` | List articles split by mode (consume_later / learn_now) |
+| `GET` | `/api/articles/indexing-status` | Learn Now processing progress |
+| `POST` | `/api/digests/process` | Trigger on-demand digest processing |
+| `GET` | `/api/digests?before_date=` | Get clusters, cursor-paginated (most recent first) |
+| `GET` | `/api/digests/processing-status` | Digest processing progress |
+| `PATCH` | `/api/digests/{id}` | Update cluster status (done, unread) |
+| `POST` | `/api/digests/{id}/promote` | Learn this → embed cluster to KB |
+| `POST` | `/api/knowledge/query` | RAG query (accepts optional conversation history) |
 | `GET` | `/api/knowledge` | List knowledge base items |
+| `GET` | `/api/settings/focused-topics` | Get user's focused topics list |
+| `PUT` | `/api/settings/focused-topics` | Set user's focused topics list (max 20) |
+| `POST` | `/api/feed/fetch` | Trigger fetch (newsletters + RSS sources) |
+| `GET` | `/api/feed` | List feed items (paginated, filterable by status/source_type) |
+| `GET` | `/api/feed/fetch-status` | Fetch/processing progress |
+| `PATCH` | `/api/feed/{id}` | Update feed item status (read, archived) |
+| `POST` | `/api/feed/{id}/capture` | Capture feed item → digest queue or KB |
+| `GET` | `/api/feed/sources` | List configured feed sources |
+| `POST` | `/api/feed/sources` | Add feed source (auto-discovers RSS) |
+| `DELETE` | `/api/feed/sources/{id}` | Remove feed source |
+| `GET` | `/api/stats` | LLM usage stats (costs, tokens, calls) |
+| `GET` | `/api/llm-status` | Current LLM provider status (local/cloud, active) |
 
 ---
 
@@ -328,4 +486,11 @@ queued → kb_indexed
 unread → done
        → promoted (via "Learn this")
        → snoozed (re-appears next day)
+```
+
+### Feed Item
+```
+unread → read
+       → archived
+       → captured (via "Add to Digest Queue" or "Save to KB")
 ```

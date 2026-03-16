@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     Text,
@@ -37,6 +38,8 @@ class Article(Base):
     status: Mapped[str] = mapped_column(Text, default="queued")
     extraction_quality: Mapped[str] = mapped_column(Text, default="ok")
     source_domain: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    content_attributes: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -56,6 +59,10 @@ class Cluster(Base):
     bullets: Mapped[dict] = mapped_column(JSONB, nullable=False)
     quotes: Mapped[dict | None] = mapped_column(JSONB)
     topic_tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    content_style: Mapped[str | None] = mapped_column(Text)
+    information_density: Mapped[int | None] = mapped_column(Integer)
+    content_attributes: Mapped[dict | None] = mapped_column(JSONB)
+    unpacked_sections: Mapped[list | None] = mapped_column(JSONB)
     source_count: Mapped[int] = mapped_column(Integer, default=1)
     is_merged: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(Text, default="unread")
@@ -78,6 +85,7 @@ class ClusterSource(Base):
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     source_name: Mapped[str | None] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text, default="article")
+    image_url: Mapped[str | None] = mapped_column(Text)
 
     cluster: Mapped["Cluster"] = relationship(back_populates="sources")
     article: Mapped["Article"] = relationship(back_populates="cluster_sources")
@@ -100,6 +108,78 @@ class KnowledgeItem(Base):
     embeddings: Mapped[list["Embedding"]] = relationship(
         back_populates="knowledge_item", cascade="all, delete-orphan"
     )
+
+
+class LLMUsage(Base):
+    __tablename__ = "llm_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    task_type: Mapped[str] = mapped_column(Text, nullable=False)  # embed, summarize, tag_topics, score_quality, rag_answer
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)  # local | cloud
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class FeedSource(Base):
+    __tablename__ = "feed_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)  # rss | youtube | newsletter
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    config: Mapped[dict | None] = mapped_column(JSONB)
+    last_fetched: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    feed_items: Mapped[list["FeedItem"]] = relationship(
+        back_populates="feed_source", cascade="all, delete-orphan"
+    )
+
+
+class FeedItem(Base):
+    __tablename__ = "feed_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    feed_source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("feed_sources.id", ondelete="CASCADE")
+    )
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)  # denormalized
+    guid: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    source_domain: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary: Mapped[str | None] = mapped_column(Text)
+    bullets: Mapped[dict | None] = mapped_column(JSONB)
+    content_style: Mapped[str | None] = mapped_column(Text)
+    information_density: Mapped[int | None] = mapped_column(Integer)
+    topic_tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    topic_match_score: Mapped[int] = mapped_column(Integer, default=0)
+    source_name: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="unread")  # unread | read | archived | captured
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    feed_source: Mapped["FeedSource"] = relationship(back_populates="feed_items")
 
 
 class Embedding(Base):

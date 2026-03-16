@@ -6,11 +6,13 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     ...options,
   });
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`API error: ${res.status} ${text}`);
   }
   return res.json();
 }
 
+// Health
 export interface HealthResponse {
   status: string;
   db: string;
@@ -20,4 +22,486 @@ export interface HealthResponse {
 
 export function fetchHealth(): Promise<HealthResponse> {
   return apiFetch<HealthResponse>("/health");
+}
+
+// Capture
+export interface CaptureRequest {
+  url: string;
+  mode: "consume_later" | "learn_now";
+}
+
+export interface CaptureResponse {
+  ok: boolean;
+  article_id: string | null;
+  duplicate: boolean;
+  title: string | null;
+  extraction_quality: string | null;
+}
+
+export function captureUrl(data: CaptureRequest): Promise<CaptureResponse> {
+  return apiFetch<CaptureResponse>("/api/articles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// Batch capture
+export interface BatchCaptureItemResult {
+  url: string;
+  ok: boolean;
+  article_id: string | null;
+  duplicate: boolean;
+  title: string | null;
+  extraction_quality: string | null;
+  error: string | null;
+}
+
+export interface BatchCaptureResponse {
+  ok: boolean;
+  results: BatchCaptureItemResult[];
+  added: number;
+  duplicates: number;
+  failed: number;
+}
+
+export function captureBatch(urls: string[], mode: "consume_later" | "learn_now"): Promise<BatchCaptureResponse> {
+  return apiFetch<BatchCaptureResponse>("/api/articles/batch", {
+    method: "POST",
+    body: JSON.stringify({ urls, mode }),
+  });
+}
+
+// Queue
+export interface QueueItem {
+  id: string;
+  url: string;
+  title: string | null;
+  source_domain: string | null;
+  mode: string;
+  status: string;
+  content_type: string;
+  extraction_quality: string;
+  created_at: string;
+}
+
+export interface QueueSection {
+  items: QueueItem[];
+  total: number;
+}
+
+export interface QueueResponse {
+  consume_later: QueueSection;
+  learn_now: QueueSection;
+}
+
+export function fetchQueue(): Promise<QueueResponse> {
+  return apiFetch<QueueResponse>("/api/articles");
+}
+
+export function deleteArticle(articleId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/articles/${articleId}`, {
+    method: "DELETE",
+  });
+}
+
+// Learn Now status
+export interface LearnNowResult {
+  ok: boolean;
+  indexed?: number;
+  failed?: number;
+  detail?: string;
+}
+
+export interface LearnNowStatus {
+  is_processing: boolean;
+  total: number;
+  current: number;
+  stage: string;
+  llm_mode: "local" | "cloud" | null;
+  last_result: LearnNowResult | null;
+}
+
+export function fetchLearnNowStatus(): Promise<LearnNowStatus> {
+  return apiFetch<LearnNowStatus>("/api/articles/indexing-status");
+}
+
+// Digest
+export interface DigestSource {
+  article_id: string;
+  source_url: string;
+  source_name: string | null;
+  content_type: string;
+  extraction_quality: string;
+  image_url: string | null;
+  created_at: string | null;
+}
+
+export interface UnpackSection {
+  title: string;
+  content: string;
+  timestamp?: string | null;
+}
+
+export interface UnpackResponse {
+  ok: boolean;
+  sections: UnpackSection[];
+}
+
+export interface DigestCluster {
+  id: string;
+  digest_date: string;
+  title: string;
+  headline: string;
+  summary: string;
+  bullets: string[];
+  quotes: string[];
+  topic_tags: string[];
+  content_style: string | null;
+  information_density: number | null;
+  content_attributes: Record<string, unknown> | null;
+  unpacked_sections: UnpackSection[] | null;
+  source_count: number;
+  is_merged: boolean;
+  status: string;
+  sources: DigestSource[];
+}
+
+export interface DigestResponse {
+  clusters: DigestCluster[];
+  has_more: boolean;
+}
+
+export interface ProcessingResult {
+  ok: boolean;
+  clusters_created?: number;
+  articles_processed?: number;
+  detail?: string;
+}
+
+export interface ProcessingStatus {
+  is_processing: boolean;
+  total: number;
+  current: number;
+  stage: string;
+  llm_mode: "local" | "cloud" | null;
+  last_result: ProcessingResult | null;
+}
+
+export function triggerProcess(): Promise<{ ok: boolean; detail?: string }> {
+  return apiFetch("/api/digests/process", { method: "POST" });
+}
+
+export function fetchProcessingStatus(): Promise<ProcessingStatus> {
+  return apiFetch<ProcessingStatus>("/api/digests/processing-status");
+}
+
+export function fetchDigest(beforeDate?: string): Promise<DigestResponse> {
+  const params = beforeDate ? `?before_date=${beforeDate}` : "";
+  return apiFetch<DigestResponse>(`/api/digests${params}`);
+}
+
+export function markClusterDone(clusterId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/digests/${clusterId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "done" }),
+  });
+}
+
+export function promoteCluster(clusterId: string): Promise<{ ok: boolean; indexed?: number; failed?: number }> {
+  return apiFetch(`/api/digests/${clusterId}/promote`, { method: "POST" });
+}
+
+export function unpackCluster(clusterId: string): Promise<UnpackResponse> {
+  return apiFetch<UnpackResponse>(`/api/digests/${clusterId}/unpack`, { method: "POST" });
+}
+
+// LLM Status
+export interface LLMStatus {
+  llm_mode: "local" | "cloud" | null;
+  is_active: boolean;
+}
+
+export function fetchLLMStatus(): Promise<LLMStatus> {
+  return apiFetch<LLMStatus>("/api/llm-status");
+}
+
+// RAG / Knowledge Base
+export interface SourceChunk {
+  knowledge_item_id: string;
+  chunk_index: number;
+  chunk_text: string;
+  title: string;
+  url: string | null;
+  similarity: number;
+}
+
+export interface QueryResponse {
+  ok: boolean;
+  answer: string;
+  sources: SourceChunk[];
+  related_questions: string[];
+  llm_mode: "local" | "cloud" | null;
+}
+
+export interface ChatHistoryEntry {
+  question: string;
+  answer: string;
+}
+
+export function queryKB(
+  question: string,
+  history?: ChatHistoryEntry[],
+): Promise<QueryResponse> {
+  return apiFetch<QueryResponse>("/api/knowledge/query", {
+    method: "POST",
+    body: JSON.stringify({ question, history: history ?? [] }),
+  });
+}
+
+export interface KBItem {
+  id: string;
+  title: string;
+  url: string | null;
+  source_type: string;
+  topic_tags: string[];
+  created_at: string;
+  chunk_count: number;
+  content_type: string;
+  extraction_quality: string;
+}
+
+export interface KBListResponse {
+  items: KBItem[];
+  total: number;
+  topics: string[];
+}
+
+export function fetchKB(offset = 0, limit = 10): Promise<KBListResponse> {
+  return apiFetch<KBListResponse>(`/api/knowledge?offset=${offset}&limit=${limit}`);
+}
+
+export function deleteKBItem(itemId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/knowledge/${itemId}`, {
+    method: "DELETE",
+  });
+}
+
+// Focused Topics (Settings)
+export interface FocusedTopicsResponse {
+  topics: string[];
+}
+
+export function fetchFocusedTopics(): Promise<FocusedTopicsResponse> {
+  return apiFetch<FocusedTopicsResponse>("/api/settings/focused-topics");
+}
+
+export function updateFocusedTopics(topics: string[]): Promise<FocusedTopicsResponse> {
+  return apiFetch<FocusedTopicsResponse>("/api/settings/focused-topics", {
+    method: "PUT",
+    body: JSON.stringify({ topics }),
+  });
+}
+
+// Stats
+export interface StatsTotals {
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  local_calls: number;
+  cloud_calls: number;
+}
+
+export interface StatsTaskBreakdown {
+  task_type: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface StatsDailyEntry {
+  date: string;
+  calls: number;
+  cost_usd: number;
+  local_calls: number;
+  cloud_calls: number;
+}
+
+export interface StatsRecentCall {
+  task_type: string;
+  model: string;
+  provider: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+export interface StatsResponse {
+  totals: StatsTotals;
+  by_task: StatsTaskBreakdown[];
+  daily: StatsDailyEntry[];
+  recent: StatsRecentCall[];
+}
+
+export function fetchStats(): Promise<StatsResponse> {
+  return apiFetch<StatsResponse>("/api/stats");
+}
+
+// Feed Sources
+export interface FeedSource {
+  id: string;
+  source_type: string;
+  name: string;
+  url: string | null;
+  config: Record<string, unknown> | null;
+  last_fetched: string | null;
+  item_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SourceDetectResult {
+  source_type: string;
+  name: string;
+  feed_url: string;
+  original_url: string;
+}
+
+export function fetchFeedSources(): Promise<FeedSource[]> {
+  return apiFetch<FeedSource[]>("/api/feed/sources");
+}
+
+export function createFeedSource(data: {
+  source_type: string;
+  name: string;
+  url?: string;
+  config?: Record<string, unknown>;
+}): Promise<FeedSource> {
+  return apiFetch<FeedSource>("/api/feed/sources", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteFeedSource(sourceId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/feed/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
+export function detectFeedSource(url: string): Promise<SourceDetectResult> {
+  return apiFetch<SourceDetectResult>("/api/feed/sources/detect", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
+// Feed Items
+export interface FeedItem {
+  id: string;
+  feed_source_id: string;
+  source_type: string;
+  guid: string | null;
+  title: string;
+  content: string | null;
+  url: string | null;
+  source_domain: string | null;
+  image_url: string | null;
+  published_at: string | null;
+  summary: string | null;
+  bullets: string[] | null;
+  content_style: string | null;
+  information_density: number | null;
+  topic_tags: string[];
+  topic_match_score: number;
+  source_name: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface FeedListResponse {
+  items: FeedItem[];
+  has_more: boolean;
+}
+
+export interface FeedFetchStatus {
+  is_processing: boolean;
+  total: number;
+  current: number;
+  stage: string;
+  llm_mode: "local" | "cloud" | null;
+  last_result: {
+    ok: boolean;
+    sources_scanned?: number;
+    new_items?: number;
+    topic_matches?: number;
+    detail?: string;
+  } | null;
+  source_progress: {
+    name: string;
+    source_type: string;
+    new_items: number;
+    status: string;
+    error?: string;
+  }[];
+}
+
+export function triggerFeedFetch(): Promise<{ ok: boolean; detail?: string }> {
+  return apiFetch("/api/feed/fetch", { method: "POST" });
+}
+
+export function fetchFeedFetchStatus(): Promise<FeedFetchStatus> {
+  return apiFetch<FeedFetchStatus>("/api/feed/fetch-status");
+}
+
+export function fetchFeedItems(params?: {
+  status?: string;
+  source_type?: string;
+  before_date?: string;
+  limit?: number;
+}): Promise<FeedListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.source_type) searchParams.set("source_type", params.source_type);
+  if (params?.before_date) searchParams.set("before_date", params.before_date);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch<FeedListResponse>(`/api/feed${qs ? `?${qs}` : ""}`);
+}
+
+export interface FeedSummarizeResponse {
+  ok: boolean;
+  summary: string;
+  bullets: string[];
+  content_style: string | null;
+  information_density: number | null;
+  cached: boolean;
+}
+
+export function summarizeFeedItem(itemId: string): Promise<FeedSummarizeResponse> {
+  return apiFetch<FeedSummarizeResponse>(`/api/feed/${itemId}/summarize`, {
+    method: "POST",
+  });
+}
+
+export function updateFeedItemStatus(
+  itemId: string,
+  status: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/feed/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function captureFeedItem(
+  itemId: string,
+  mode: "consume_later" | "learn_now",
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/feed/${itemId}/capture`, {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
 }

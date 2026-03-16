@@ -57,7 +57,6 @@ Two capture modes:
 - Multi-user support
 - Mobile app
 - Social/sharing features
-- Email newsletter ingestion
 
 ---
 
@@ -146,9 +145,25 @@ Two capture modes:
 - FR-31: Videos work in both Learn Now and Consume Later modes
 - FR-32: Videos can cluster with articles on the same topic
 
-### 6.7 Document Ingestion (Future)
-- FR-33: CLI script `scripts/ingest_doc.py` for PDF/DOCX → chunk → embed → KB
-- FR-34: Web upload form alternative
+### 6.7 Feed: Newsletters + Source Aggregation (Post-MVP)
+- FR-33: Dedicated Gmail account connected via IMAP + App Password for newsletter subscriptions
+- FR-34: On-demand "Fetch Feed" triggers both IMAP pull and RSS source scan
+- FR-35: Multi-item newsletters (e.g., TLDR) are split into individual feed entries
+- FR-36: Newsletter items summarized via existing `summarize()` pipeline; RSS items show title + description only (summarized on capture)
+- FR-37: User configures RSS/YouTube sources; system auto-discovers feed URLs from site/channel URLs
+- FR-38: RSS/YouTube scan capped at 25 most recent items per source per scan
+- FR-39: Each RSS item topic-tagged via `tag_topics()` and scored against focused topics
+- FR-40: Feed page displays ranked sections: topic-matching items first, non-matching in "Other"
+- FR-41: Feed items can be captured to digest queue or KB, marked read/archived
+- FR-42: Gmail credentials stored in `.env` (GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+
+### 6.8 Document Ingestion (Future)
+- FR-43: CLI script `scripts/ingest_doc.py` for PDF/DOCX → chunk → embed → KB
+- FR-44: Web upload form alternative
+
+### 6.8 Document Ingestion (Future)
+- FR-43: CLI script `scripts/ingest_doc.py` for PDF/DOCX → chunk → embed → KB
+- FR-44: Web upload form alternative
 
 ---
 
@@ -174,6 +189,9 @@ Two capture modes:
 | Article (public) | MVP | Paste URL | readability-lxml | Via Learn Now or Learn This |
 | Paywalled article | MVP | Paste URL | Partial (teaser only) | Low quality warning |
 | YouTube video | Post-MVP | Paste URL | youtube-transcript-api | Via Learn Now or Learn This |
+| Email newsletter | Post-MVP | IMAP fetch (Gmail) | HTML parse + split | Via Feed → Capture to KB |
+| RSS article | Post-MVP | RSS/Atom feed | feedparser (title+desc only) | Via Feed → Capture to Digest/KB |
+| YouTube (subscribed) | Post-MVP | YouTube channel RSS | feedparser (title+desc only) | Via Feed → Capture to Digest/KB |
 | PDF document | Future | CLI script / upload | PyMuPDF | Direct to KB |
 | DOCX document | Future | CLI script / upload | python-docx | Direct to KB |
 
@@ -188,7 +206,31 @@ Two capture modes:
 
 ---
 
-## 10. Out-of-Scope References
+## 10. Shelved Ideas (for future re-consideration)
+
+### KB-Aware Novelty Summarization
+Instead of prompt-only novelty bias, pass existing KB topic tags or recent chunk summaries as context to the summarizer. Ask the LLM to explicitly highlight what is *new* relative to the user's existing knowledge. More accurate but adds tokens/cost. Re-evaluate once KB reaches meaningful size.
+
+### Separate Content Scoring Step
+A dedicated `score_content()` LLM call (separate from `summarize()`) that evaluates information density, content style, and novelty independently. Cleaner separation of concerns, potentially more accurate scoring. Worth experimenting with especially if achievable using local LLM at near-zero cost. Currently, content style and information density are extracted as part of `summarize()` output.
+
+### Improved Quote Extraction (Option C — pre-extract + fallback)
+Current approach: LLM generates quotes as part of `summarize()` JSON output. Problems: may hallucinate/paraphrase, competing for attention with 6 other fields, format instability.
+
+**Planned approach (3 parts):**
+1. **Structured format**: Change prompt to return `{text, speaker}` objects instead of plain strings. Embrace the format the LLM naturally wants to produce. Update frontend to display speaker attribution.
+2. **Regex pre-extraction**: Before summarization, extract all real quoted text from the article using patterns (`"..."` + attribution like "said X", "according to X"). Pass candidates into the summarize prompt and ask LLM to select the 1-3 most insightful/controversial. Guarantees verbatim accuracy, zero extra LLM cost.
+3. **Fallback for quote-less content**: When regex finds zero candidates (tutorials, opinion pieces, YouTube transcripts), fall back to asking the LLM to extract "key statements" or "key claims" — clearly labeled differently from direct quotes.
+
+**Implementation notes:**
+- Regex extractor goes in a new helper (e.g., `text_processing.py`)
+- Candidate quotes passed as additional context in `summarize()` user_prompt
+- `_normalize_quotes()` in `digest.py` already handles mixed formats
+- Frontend quote tab should show speaker attribution when available
+
+---
+
+## 11. Out-of-Scope References
 - See `architecture.md` for system design, data model, and deployment
 - See `tech_stack.md` for library and tooling decisions
 - See `implementation_plan.md` for phased build roadmap

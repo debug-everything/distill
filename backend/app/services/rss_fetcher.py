@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_utils import sanitize
 from app.models.database import FeedItem, FeedSource
 
 logger = logging.getLogger(__name__)
@@ -19,12 +20,12 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
     import feedparser
 
     if not source.url:
-        logger.warning(f"Source {source.name} has no URL")
+        logger.warning("Source %s has no URL", sanitize(source.name))
         return []
 
     feed = feedparser.parse(source.url)
     if feed.bozo and not feed.entries:
-        logger.error(f"Feed parse error for {source.name}: {feed.bozo_exception}")
+        logger.error("Feed parse error for %s: %s", sanitize(source.name), feed.bozo_exception)
         return []
 
     entries = feed.entries[:MAX_ITEMS_PER_SOURCE]
@@ -73,7 +74,7 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
 
     if new_items:
         await db.flush()
-        logger.info(f"Fetched {len(new_items)} new items from {source.name}")
+        logger.info("Fetched %d new items from %s", len(new_items), sanitize(source.name))
 
     return new_items
 

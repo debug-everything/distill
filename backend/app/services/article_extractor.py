@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import httpx
 from readability import Document
 
+from app.core.log_utils import sanitize
 from app.services.content_extractor import ExtractionResult
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ async def extract_article(url: str) -> ExtractionResult:
     extraction_quality = "low" if word_count < 200 else "ok"
 
     if extraction_quality == "low":
-        logger.warning(f"Low extraction quality for {url} ({word_count} words)")
+        logger.warning("Low extraction quality for %s (%d words)", sanitize(url), word_count)
 
     return ExtractionResult(
         title=title,

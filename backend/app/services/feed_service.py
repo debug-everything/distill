@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.log_utils import sanitize
 from app.core.task_router import tag_topics, refresh_focused_topics, llm_tracker
 from app.models.database import FeedItem, FeedSource, UserSetting
 
@@ -113,7 +114,7 @@ async def _run_fetch(db: AsyncSession) -> dict:
                     if item.topic_match_score > 0:
                         total_matches += 1
                 except Exception as e:
-                    logger.error(f"Tagging failed for feed item {item.title}: {e}")
+                    logger.error("Tagging failed for feed item %s: %s", sanitize(item.title or ""), e)
                     item.topic_tags = []
                     item.topic_match_score = 0
 
@@ -128,7 +129,7 @@ async def _run_fetch(db: AsyncSession) -> dict:
             await db.commit()
 
         except Exception as e:
-            logger.error(f"Fetch failed for source {source.name}: {e}")
+            logger.error("Fetch failed for source %s: %s", sanitize(source.name), e)
             source_result["status"] = "error"
             source_result["error"] = str(e)
             await db.rollback()
@@ -148,10 +149,10 @@ async def _fetch_source(db: AsyncSession, source: FeedSource) -> list[FeedItem]:
         return await fetch_rss_source(db, source)
     elif source.source_type == "newsletter":
         # Newsletter fetching will be implemented in Phase 11F
-        logger.info(f"Newsletter fetch not yet implemented for {source.name}")
+        logger.info("Newsletter fetch not yet implemented for %s", sanitize(source.name))
         return []
     else:
-        logger.warning(f"Unknown source type: {source.source_type}")
+        logger.warning("Unknown source type: %s", sanitize(source.source_type))
         return []
 
 

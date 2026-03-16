@@ -8,6 +8,7 @@ from sqlalchemy import select, update, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.log_utils import sanitize
 from app.models.database import FeedItem, FeedSource
 from app.services.feed_service import start_fetch_in_background, status as fetch_status
 
@@ -162,7 +163,7 @@ async def detect_source(req: SourceDetectRequest) -> SourceDetectResponse:
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        logger.error(f"Source detection failed for {req.url}: {e}")
+        logger.error("Source detection failed for %s: %s", sanitize(req.url), e)
         raise HTTPException(status_code=422, detail=f"Could not detect feed source: {e}")
 
     return SourceDetectResponse(
@@ -323,7 +324,7 @@ async def summarize_feed_item(item_id: str, db: AsyncSession = Depends(get_db)):
     try:
         extraction = await extract_content(item.url)
     except Exception as e:
-        logger.error(f"Extraction failed for feed item {item_id} ({item.url}): {e}")
+        logger.error("Extraction failed for feed item %s (%s): %s", item_id, sanitize(item.url), e)
         raise HTTPException(status_code=422, detail=_friendly_extraction_error(str(e)))
 
     if not extraction.clean_text or len(extraction.clean_text.strip()) < 100:

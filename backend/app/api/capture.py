@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.log_utils import sanitize
 from app.models.database import Article
 from app.services.content_extractor import extract_content
 from app.services.knowledge_service import start_learn_now_in_background, learn_now_status
@@ -71,7 +72,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
                 existing.image_url = fresh.image_url
                 existing.content_attributes = fresh.content_attributes
             except Exception as e:
-                logger.warning(f"Re-extraction failed for {url}, reusing existing data: {e}")
+                logger.warning("Re-extraction failed for %s, reusing existing data: %s", sanitize(url), e)
             existing.mode = mode
             existing.status = "indexing" if mode == "learn_now" else "queued"
             return BatchCaptureItemResult(
@@ -86,7 +87,7 @@ async def _capture_single(url: str, mode: str, db: AsyncSession) -> BatchCapture
     try:
         result = await extract_content(url)
     except Exception as e:
-        logger.error(f"Extraction failed for {url}: {e}")
+        logger.error("Extraction failed for %s: %s", sanitize(url), e)
         return BatchCaptureItemResult(url=url, ok=False, error=str(e))
 
     status = "indexing" if mode == "learn_now" else "queued"
@@ -141,7 +142,7 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
                 existing.image_url = fresh.image_url
                 existing.content_attributes = fresh.content_attributes
             except Exception as e:
-                logger.warning(f"Re-extraction failed for {req.url}, reusing existing data: {e}")
+                logger.warning("Re-extraction failed for %s, reusing existing data: %s", sanitize(req.url), e)
             existing.mode = req.mode
             existing.status = "indexing" if req.mode == "learn_now" else "queued"
             await db.commit()
@@ -164,7 +165,7 @@ async def capture_url(req: CaptureRequest, db: AsyncSession = Depends(get_db)):
     try:
         result = await extract_content(req.url)
     except Exception as e:
-        logger.error(f"Extraction failed for {req.url}: {e}")
+        logger.error("Extraction failed for %s: %s", sanitize(req.url), e)
         raise HTTPException(status_code=422, detail=f"Could not extract content: {e}")
 
     status = "indexing" if req.mode == "learn_now" else "queued"

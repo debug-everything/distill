@@ -6,7 +6,11 @@ from urllib.parse import parse_qs, urlparse
 
 from youtube_transcript_api import YouTubeTranscriptApi
 
+from app.core.log_utils import sanitize
+from app.core.security import validate_url
 from app.services.content_extractor import ExtractionResult
+
+_ALLOWED_YT_HOSTS = {"www.youtube.com", "youtube.com", "youtu.be"}
 
 logger = logging.getLogger(__name__)
 
@@ -200,11 +204,18 @@ async def _fetch_metadata(url: str) -> tuple[str | None, str | None]:
     """Fetch video title and description via YouTube oembed + page scrape."""
     import httpx
 
+    # SSRF guard: only allow requests to known YouTube hosts
+    validate_url(url)
+    parsed = urlparse(url)
+    if parsed.hostname not in _ALLOWED_YT_HOSTS:
+        logger.warning("Blocked non-YouTube URL in _fetch_metadata: %s", sanitize(url))
+        return None, None
+
     title = None
     description = None
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
             # oembed gives us the title
             resp = await client.get(
                 "https://www.youtube.com/oembed",
@@ -224,6 +235,6 @@ async def _fetch_metadata(url: str) -> tuple[str | None, str | None]:
                 if desc_match:
                     description = desc_match.group(1)
     except Exception as e:
-        logger.warning(f"Failed to fetch video metadata: {e}")
+        logger.warning("Failed to fetch video metadata: %s", e)
 
     return title, description

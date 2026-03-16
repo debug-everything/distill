@@ -1,6 +1,3 @@
-"""Logging utilities — sanitizers for untrusted input."""
+"""Logging utilities — re-exports from security module for backwards compatibility."""
 
-
-def sanitize(value: str) -> str:
-    """Strip control characters that enable log injection (newlines, carriage returns, ANSI escapes)."""
-    return value.replace("\n", "").replace("\r", "").replace("\x1b", "")
+from app.core.security import sanitize_log as sanitize  # noqa: F401

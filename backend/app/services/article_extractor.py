@@ -8,6 +8,7 @@ import httpx
 from readability import Document
 
 from app.core.log_utils import sanitize
+from app.core.security import validate_url
 from app.services.content_extractor import ExtractionResult
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ _USER_AGENT = (
 
 async def extract_article(url: str) -> ExtractionResult:
     """Fetch URL and extract clean text using readability-lxml."""
+    validate_url(url)
     async with httpx.AsyncClient(
         timeout=15.0,
         follow_redirects=True,

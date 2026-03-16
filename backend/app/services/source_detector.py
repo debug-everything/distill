@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.core.security import validate_url
+
 logger = logging.getLogger(__name__)
 
 _YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
@@ -89,6 +91,7 @@ async def _detect_youtube(url: str, parsed) -> DetectedSource:
 
 async def _resolve_youtube_channel_id(url: str) -> str:
     """Fetch a YouTube channel page and extract the channel ID from HTML."""
+    validate_url(url)
     async with httpx.AsyncClient(
         timeout=10.0,
         follow_redirects=True,
@@ -148,6 +151,7 @@ async def _detect_rss(url: str) -> DetectedSource:
     """Try URL as direct feed, then try HTML auto-discovery."""
     import feedparser
 
+    validate_url(url)
     async with httpx.AsyncClient(
         timeout=10.0,
         follow_redirects=True,

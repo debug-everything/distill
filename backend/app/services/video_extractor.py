@@ -205,7 +205,9 @@ async def _fetch_metadata(video_id: str) -> tuple[str | None, str | None]:
     """
     import httpx
 
-    # Construct safe URLs from validated video ID — no user input flows into HTTP calls
+    # Validate video ID format (alphanumeric, hyphens, underscores only)
+    if not re.fullmatch(r"[\w-]{6,15}", video_id):
+        return None, None
     watch_url = f"https://www.youtube.com/watch?v={video_id}"
 
     title = None

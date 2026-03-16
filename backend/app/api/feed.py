@@ -324,7 +324,7 @@ async def summarize_feed_item(item_id: str, db: AsyncSession = Depends(get_db)):
     try:
         extraction = await extract_content(item.url)
     except Exception as e:
-        logger.error("Extraction failed for feed item %s (%s): %s", item_id, sanitize(item.url), e)
+        logger.error("Extraction failed for feed item %s (%s): %s", sanitize(item_id), sanitize(item.url or ""), e)
         raise HTTPException(status_code=422, detail=_friendly_extraction_error(str(e)))
 
     if not extraction.clean_text or len(extraction.clean_text.strip()) < 100:
@@ -341,7 +341,7 @@ async def summarize_feed_item(item_id: str, db: AsyncSession = Depends(get_db)):
             extraction.clean_text, content_type=extraction.content_type
         )
     except Exception as e:
-        logger.error(f"Summarize failed for feed item {item_id}: {e}")
+        logger.error("Summarize failed for feed item %s: %s", sanitize(item_id), e)
         raise HTTPException(status_code=500, detail=f"Summarization failed: {e}")
 
     # Cache on the feed item

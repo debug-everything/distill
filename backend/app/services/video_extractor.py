@@ -166,8 +166,8 @@ async def extract_video(url: str) -> ExtractionResult:
 
     if extraction_quality != "ok":
         logger.warning(
-            f"Video {video_id}: quality={extraction_quality}, "
-            f"auto_gen={is_auto_generated}, words={word_count}"
+            "Video %s: quality=%s, auto_gen=%s, words=%d",
+            sanitize(video_id), extraction_quality, is_auto_generated, word_count,
         )
 
     # Content attributes: demo detection + description analysis
@@ -180,9 +180,9 @@ async def extract_video(url: str) -> ExtractionResult:
     }
 
     logger.info(
-        f"Video {video_id}: demo_cues={demo_cues['demo_cue_count']}, "
-        f"density={demo_cues['demo_cue_density']}/1k words, "
-        f"desc_keywords={desc_analysis.get('description_demo_keywords', [])}"
+        "Video %s: demo_cues=%d, density=%s/1k words, desc_keywords=%s",
+        sanitize(video_id), demo_cues["demo_cue_count"],
+        demo_cues["demo_cue_density"], desc_analysis.get("description_demo_keywords", []),
     )
 
     return ExtractionResult(

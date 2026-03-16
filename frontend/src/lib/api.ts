@@ -471,6 +471,21 @@ export function fetchFeedItems(params?: {
   return apiFetch<FeedListResponse>(`/api/feed${qs ? `?${qs}` : ""}`);
 }
 
+export interface FeedSummarizeResponse {
+  ok: boolean;
+  summary: string;
+  bullets: string[];
+  content_style: string | null;
+  information_density: number | null;
+  cached: boolean;
+}
+
+export function summarizeFeedItem(itemId: string): Promise<FeedSummarizeResponse> {
+  return apiFetch<FeedSummarizeResponse>(`/api/feed/${itemId}/summarize`, {
+    method: "POST",
+  });
+}
+
 export function updateFeedItemStatus(
   itemId: string,
   status: string,

@@ -228,7 +228,7 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 Unified feed combining Gmail newsletters and RSS/YouTube source aggregation. Shared `feed_sources` + `feed_items` tables, single Feed page with topic-matched ranking.
 
-**Storybook mockups:** `frontend/src/stories/mockups/FeedMockups.stories.tsx` — 5 interactive screens covering Settings, Feed empty/scan/populated states, and newsletter strategy reference.
+**Storybook mockups:** `frontend/src/stories/mockups/FeedMockups.stories.tsx` — 6 interactive screens covering Settings, Feed empty/scan/populated states, newsletter strategy reference, and left sidebar navigation with date grouping.
 
 **Design decisions:**
 - Separate `/feed` page (not mixed into digest — these items weren't manually curated)
@@ -271,10 +271,9 @@ Storybook mockups: `src/stories/mockups/FeedMockups.stories.tsx` (screens 2-4)
 - [x] **Empty state** (no sources configured): centered Rss icon, explanation text, "Set up Feed Sources" button → links to `/settings#feed-sources`. Tip nudge for focused topics.
 - [x] **Header** (sources configured): "N sources configured · [Edit] · Last fetched Xh ago" — Edit links to Settings
 - [x] **Scan progress**: card with per-source progress bar (source name, N/total count). Completion summary toast: new items / topic matches / sources scanned
-- [x] **Source type filter pills**: All / YouTube / RSS / Newsletter — toggle buttons with colored icons (red/orange/blue)
-- [x] **Ranked sections**:
-  - **"Matching Your Topics"** (count badge) — items with `topic_match_score > 0`, matching topic badges use filled variant
-  - **"Other from Your Sources"** (outline count badge, muted header) — items with `topic_match_score == 0`
+- [x] **Source type filter pills** (mobile): All / YouTube / RSS / Newsletter — toggle buttons with colored icons (red/orange/blue)
+- [x] **Left sidebar** (desktop): All Sources / By Type / Individual Sources with unread counts — replaces filter pills on wide screens
+- [x] **Chronological grouping**: Today / Yesterday / This Week / Older with sticky headers. Within each group: topic-matched items sorted first, with left border accent and filled topic badges
 - [x] **Feed item cards**:
   - Row 1: source icon + name + type badge (colored pill) + published time (right-aligned)
   - Title (font-medium), topic tag badges (matching = filled, other = outline)
@@ -314,7 +313,52 @@ Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
 - [ ] Mark Gmail messages as SEEN after processing
 - [ ] Gmail newsletter source auto-created from `.env` config
 
-### 11G — UX Follow-up (TODO: re-evaluate later)
+### 11F-2 — Feed UX: Left Nav + Chronological Grouping — DONE
+- [x] **Feed page left sidebar** (desktop): All Sources, By Type (YouTube/RSS/Newsletter), individual sources — each with unread counts. Toggle-to-deselect, "Manage Sources" link. Mobile: filter pills fallback.
+- [x] **Feed date groups**: Items grouped by Today / Yesterday / This Week / Older. Sticky headers with separator line and item count. Within each group: topic-matched items float to top (sorted by match score then recency), visually distinguished with left border accent.
+- [x] **Digest page left sidebar** (desktop): All Topics, Focused topics (star icon), Other topics (hash icon) — each with cluster counts. Mobile: topic filter pills fallback.
+- [x] **Digest sticky date headers**: Upgraded from plain text to sticky headers with separator line and cluster count.
+- [x] **Digest tile layout**: Title + subtitle above tags (was tags above title). Image floated right in CardContent so summary text wraps around it instead of side-by-side flex layout.
+- [x] Client-side filtering for feed (all unread items fetched in one query, filtered locally for accurate sidebar counts).
+
+### 11G — Feed: On-Demand Summarize — NOT STARTED
+On-demand per-item summarization for feed items that lack descriptions (common for YouTube RSS, sparse blog feeds).
+
+**Problem:** Many feed items only have a title — no description or content snippet. User can't triage effectively without understanding what the article is about.
+
+**Design:**
+- New endpoint: `POST /api/feed/{item_id}/summarize`
+- Backend flow: fetch URL → extract clean text (reuse existing `content_extractor`) → run `summarize()` (same prompt as digest pipeline) → cache result in `feed_item.summary` + `feed_item.bullets`
+- Frontend: "Summarize" button on feed cards → expands card inline with summary + bullets
+- Cache: once summarized, subsequent views load from DB instantly
+- No auto-summarization at fetch time — only on-demand (most items get dismissed)
+- Reuses existing extraction + summarization infrastructure (no new LLM prompts)
+
+**Tasks:**
+- [ ] `POST /api/feed/{item_id}/summarize` endpoint — fetch URL, extract, summarize, cache to feed_item
+- [ ] Frontend: "Summarize" button on FeedItemCard, inline expansion with loading skeleton
+- [ ] Handle edge cases: already summarized (return cached), no URL, extraction failure
+
+### 11H — Debounced Auto-Process on Capture — NOT STARTED
+Auto-trigger digest processing after feed items are captured, with a configurable debounce delay.
+
+**Problem:** Current flow requires manual "Process" trigger after capturing feed items. User captures items from Feed, switches to Digest, and sees nothing — has to go back and trigger processing.
+
+**Design:**
+- After any feed-to-digest capture, schedule digest processing to fire after a configurable delay (default: 30 seconds)
+- If more captures come in during the delay window, the timer resets (debounce)
+- When the timer fires, calls existing `start_processing_in_background()` with its asyncio lock
+- Delay is configurable via `DIGEST_AUTO_PROCESS_DELAY_SECONDS` env var (0 = disabled)
+- Existing manual "Process" button still works (unchanged)
+
+**Tasks:**
+- [ ] `schedule_deferred_processing(delay_seconds)` function in `digest_processor.py` — manages a cancelable asyncio timer
+- [ ] Call `schedule_deferred_processing()` from feed capture endpoint (`POST /api/feed/{item_id}/capture`) on success
+- [ ] Also call from article capture endpoint (`POST /api/articles`) for consistency
+- [ ] Configurable delay via env var `DIGEST_AUTO_PROCESS_DELAY_SECONDS` (default 30, 0 = disabled)
+- [ ] Frontend: show processing indicator on Digest page when auto-process kicks in (reuses existing polling)
+
+### 11I — UX Follow-up (TODO: re-evaluate later)
 - [ ] Evaluate merging Feed + Digest into a unified Feedly-like view
 - [ ] Evaluate scheduled background fetch (cron) when dedicated hosting is available
 - [ ] Source-level mute/prioritize controls

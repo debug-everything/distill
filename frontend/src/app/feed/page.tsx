@@ -5,14 +5,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   BookOpen,
   Check,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
+  Flame,
   Loader2,
   Mail,
   RefreshCw,
   Rss,
   Settings,
+  Sparkles,
   Youtube,
   Zap,
 } from "lucide-react";
@@ -29,9 +34,11 @@ import {
   triggerFeedFetch,
   updateFeedItemStatus,
   captureFeedItem,
+  summarizeFeedItem,
   type FeedItem,
   type FeedFetchStatus,
   type FeedSource,
+  type FeedSummarizeResponse,
 } from "@/lib/api";
 
 const SOURCE_ICONS: Record<string, typeof Rss> = {
@@ -168,6 +175,30 @@ export default function FeedPage() {
       ["feedItems"],
       (old: { items: FeedItem[]; has_more: boolean } | undefined) =>
         old ? { ...old, items: old.items.filter((i) => i.id !== itemId) } : old,
+    );
+  };
+
+  // Update item in cache after summarization
+  const updateItemSummary = (itemId: string, data: FeedSummarizeResponse) => {
+    queryClient.setQueryData(
+      ["feedItems"],
+      (old: { items: FeedItem[]; has_more: boolean } | undefined) =>
+        old
+          ? {
+              ...old,
+              items: old.items.map((i) =>
+                i.id === itemId
+                  ? {
+                      ...i,
+                      summary: data.summary,
+                      bullets: data.bullets,
+                      content_style: data.content_style,
+                      information_density: data.information_density,
+                    }
+                  : i,
+              ),
+            }
+          : old,
     );
   };
 
@@ -487,6 +518,7 @@ export default function FeedPage() {
                   item={item}
                   onDone={() => markDone.mutate(item.id)}
                   onCapture={(mode) => capture.mutate({ id: item.id, mode })}
+                  onSummarized={updateItemSummary}
                   ts={ts}
                 />
               ))}
@@ -498,22 +530,56 @@ export default function FeedPage() {
   );
 }
 
+// ── Style labels (shared with digest) ────────────────────────────────────────
+
+const STYLE_LABELS: Record<string, string> = {
+  tutorial: "Tutorial",
+  demo: "Demo",
+  opinion: "Opinion",
+  interview: "Interview",
+  news: "News",
+  analysis: "Analysis",
+  narrative: "Narrative",
+  review: "Review",
+};
+
 // ── Feed item card ───────────────────────────────────────────────────────────
 
 function FeedItemCard({
   item,
   onDone,
   onCapture,
+  onSummarized,
   ts,
 }: {
   item: FeedItem;
   onDone: () => void;
   onCapture: (mode: "consume_later" | "learn_now") => void;
+  onSummarized: (itemId: string, data: FeedSummarizeResponse) => void;
   ts: { body: string; small: string; heading: string };
 }) {
+  const [expanded, setExpanded] = useState(false);
   const Icon = SOURCE_ICONS[item.source_type] ?? Rss;
   const iconColor = SOURCE_COLORS[item.source_type] ?? "text-muted-foreground";
   const isMatched = item.topic_match_score > 0;
+  const hasSummary = !!item.summary;
+
+  const summarize = useMutation({
+    mutationFn: () => summarizeFeedItem(item.id),
+    onSuccess: (data) => {
+      onSummarized(item.id, data);
+      setExpanded(true);
+    },
+  });
+
+  const handleSummarize = () => {
+    if (hasSummary) {
+      setExpanded(!expanded);
+    } else {
+      setExpanded(true);
+      summarize.mutate();
+    }
+  };
 
   return (
     <Card className={isMatched ? "border-l-2 border-l-primary/40" : ""}>
@@ -552,11 +618,76 @@ function FeedItemCard({
           )}
         </div>
 
-        {/* Description snippet */}
-        {item.content && (
+        {/* Description snippet (hide when summary is expanded) */}
+        {item.content && !expanded && (
           <p className={`line-clamp-2 ${ts.small} text-muted-foreground`}>
             {stripHtml(item.content).slice(0, 200)}
           </p>
+        )}
+
+        {/* Inline summary expansion */}
+        {expanded && (
+          <div className="animate-in fade-in slide-in-from-top-1 duration-200 rounded-md bg-muted/40 p-3 space-y-2">
+            {summarize.isPending ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-3 w-3/5 mt-2" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            ) : summarize.isError ? (
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <div>
+                  <p className={`${ts.small} text-muted-foreground`}>
+                    {(() => {
+                      const msg = summarize.error.message;
+                      // Extract "detail" from API error JSON: 'API error: 422 {"detail":"..."}'
+                      const match = msg.match(/"detail"\s*:\s*"([^"]+)"/);
+                      return match?.[1] ?? msg;
+                    })()}
+                  </p>
+                  <button
+                    className={`${ts.small} mt-1 text-primary underline`}
+                    onClick={() => summarize.mutate()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : item.summary ? (
+              <>
+                <p className={`${ts.body} leading-relaxed`}>{item.summary}</p>
+                {item.bullets && item.bullets.length > 0 && (
+                  <ul className="space-y-1.5 pt-1">
+                    {item.bullets.map((bullet, i) => (
+                      <li key={i} className={`flex gap-2 ${ts.small} text-muted-foreground`}>
+                        <span className="mt-0.5 shrink-0">•</span>
+                        <span>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {/* Content meta badges */}
+                {(item.content_style || (item.information_density != null && item.information_density >= 7)) && (
+                  <div className="flex gap-1.5 pt-1">
+                    {item.content_style && STYLE_LABELS[item.content_style] && (
+                      <Badge variant="outline" className="text-xs">
+                        {STYLE_LABELS[item.content_style]}
+                      </Badge>
+                    )}
+                    {item.information_density != null && item.information_density >= 7 && (
+                      <Badge variant="outline" className="border-orange-300 text-xs text-orange-600">
+                        <Flame className="mr-1 h-3 w-3" />
+                        Dense ({item.information_density}/10)
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
         )}
 
         {/* Actions */}
@@ -565,6 +696,23 @@ function FeedItemCard({
             <Check className="mr-1 h-3.5 w-3.5" />
             Done
           </Button>
+          {item.url && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSummarize}
+              disabled={summarize.isPending}
+            >
+              {summarize.isPending ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : expanded ? (
+                <ChevronUp className="mr-1 h-3.5 w-3.5" />
+              ) : (
+                <Sparkles className="mr-1 h-3.5 w-3.5" />
+              )}
+              {hasSummary ? (expanded ? "Hide" : "Summary") : "Summarize"}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

@@ -73,6 +73,15 @@ class CaptureFromFeedRequest(BaseModel):
     mode: str = "consume_later"  # consume_later | learn_now
 
 
+class FeedSummarizeResponse(BaseModel):
+    ok: bool
+    summary: str
+    bullets: list[str]
+    content_style: str | None = None
+    information_density: int | None = None
+    cached: bool = False
+
+
 class SourceDetectRequest(BaseModel):
     url: str
 
@@ -260,6 +269,105 @@ async def update_feed_item(item_id: str, req: FeedItemPatch, db: AsyncSession = 
     )
     await db.commit()
     return {"ok": True}
+
+
+def _friendly_extraction_error(raw: str) -> str:
+    """Convert verbose extraction errors into concise user-facing messages."""
+    lowered = raw.lower()
+    if "live event" in lowered or "premieres in" in lowered:
+        return "This video hasn't aired yet — no content to summarize"
+    if "transcript" in lowered and ("disabled" in lowered or "not available" in lowered):
+        return "No transcript available for this video"
+    if "could not retrieve a transcript" in lowered:
+        return "Video transcript is unavailable (may be private, age-restricted, or have no captions)"
+    if "403" in raw or "forbidden" in lowered:
+        return "Access denied — content may be behind a login or paywall"
+    if "404" in raw or "not found" in lowered:
+        return "Page not found — the URL may have been removed"
+    if "timeout" in lowered or "timed out" in lowered:
+        return "Request timed out — try again later"
+    # Fallback: truncate to something reasonable
+    short = raw.split("\n")[0][:120]
+    return f"Could not extract content: {short}"
+
+
+@router.post("/api/feed/{item_id}/summarize", response_model=FeedSummarizeResponse)
+async def summarize_feed_item(item_id: str, db: AsyncSession = Depends(get_db)):
+    """On-demand summarization for a feed item.
+
+    Fetches the item's URL, extracts content, runs summarize(), and caches
+    the result on the feed item for future instant retrieval.
+    """
+    result = await db.execute(select(FeedItem).where(FeedItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Feed item not found")
+
+    # Cache hit — return immediately
+    if item.summary is not None:
+        return FeedSummarizeResponse(
+            ok=True,
+            summary=item.summary,
+            bullets=item.bullets or [],
+            content_style=item.content_style,
+            information_density=item.information_density,
+            cached=True,
+        )
+
+    if not item.url:
+        raise HTTPException(status_code=422, detail="Feed item has no URL to summarize")
+
+    # Extract content from the URL
+    from app.services.content_extractor import extract_content
+
+    try:
+        extraction = await extract_content(item.url)
+    except Exception as e:
+        logger.error(f"Extraction failed for feed item {item_id} ({item.url}): {e}")
+        raise HTTPException(status_code=422, detail=_friendly_extraction_error(str(e)))
+
+    if not extraction.clean_text or len(extraction.clean_text.strip()) < 100:
+        raise HTTPException(
+            status_code=422,
+            detail="Content is too short to summarize",
+        )
+
+    # Summarize via task_router
+    from app.core.task_router import summarize
+
+    try:
+        summary_result = await summarize(
+            extraction.clean_text, content_type=extraction.content_type
+        )
+    except Exception as e:
+        logger.error(f"Summarize failed for feed item {item_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Summarization failed: {e}")
+
+    # Cache on the feed item
+    summary_text = summary_result.get("summary", "")
+    bullets = summary_result.get("bullets", [])
+    content_style = summary_result.get("content_style")
+    information_density = summary_result.get("information_density")
+
+    await db.execute(
+        update(FeedItem)
+        .where(FeedItem.id == item_id)
+        .values(
+            summary=summary_text,
+            bullets=bullets,
+            content_style=content_style,
+            information_density=information_density,
+        )
+    )
+    await db.commit()
+
+    return FeedSummarizeResponse(
+        ok=True,
+        summary=summary_text,
+        bullets=bullets if isinstance(bullets, list) else [],
+        content_style=content_style,
+        information_density=information_density,
+    )
 
 
 @router.post("/api/feed/{item_id}/capture")

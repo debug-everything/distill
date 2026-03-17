@@ -149,8 +149,36 @@ def _get_chat_model(tier: str = "heavy") -> str:
     return f"ollama/{settings.local_chat_light}"
 
 
+def _get_cloud_chat_models() -> list[str]:
+    """Return ordered list of cloud chat models to try (primary -> fallbacks)."""
+    models = [settings.cloud_chat_model]
+    if settings.cloud_chat_fallback:
+        models.append(settings.cloud_chat_fallback)
+    if settings.cloud_chat_fallback_2:
+        models.append(settings.cloud_chat_fallback_2)
+    return models
+
+
 def _get_cloud_chat_model() -> str:
+    """Return primary cloud chat model (for simple callers)."""
     return settings.cloud_chat_model
+
+
+async def _cloud_completion(task_name: str, **kwargs) -> object:
+    """Try cloud chat models in fallback order. Returns the first successful response."""
+    models = _get_cloud_chat_models()
+    last_error = None
+    for model in models:
+        try:
+            logger.info("%s: trying cloud model %s", task_name, model)
+            response = await litellm.acompletion(model=model, **kwargs)
+            llm_tracker.record(is_local=False)
+            record_usage(response, task_name, model, is_local=False)
+            return response
+        except Exception as e:
+            logger.warning("%s: cloud model %s failed (%s)", task_name, model, e)
+            last_error = e
+    raise last_error
 
 
 def _get_embed_model(local: bool = True) -> str:
@@ -256,10 +284,8 @@ Text:
             if settings.llm_mode_heavy == "local":
                 raise
 
-    model = _get_cloud_chat_model()
-    logger.info(f"summarize: using cloud model {model}")
-    response = await litellm.acompletion(
-        model=model,
+    response = await _cloud_completion(
+        "summarize",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -267,8 +293,6 @@ Text:
         temperature=0.3,
         response_format={"type": "json_object"},
     )
-    llm_tracker.record(is_local=False)
-    record_usage(response, "summarize", model, is_local=False)
     return json.loads(response.choices[0].message.content)
 
 
@@ -337,10 +361,8 @@ Text:
             if settings.llm_mode_heavy == "local":
                 raise
 
-    model = _get_cloud_chat_model()
-    logger.info(f"unpack_sections: using cloud model {model}")
-    response = await litellm.acompletion(
-        model=model,
+    response = await _cloud_completion(
+        "unpack",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -348,8 +370,6 @@ Text:
         temperature=0.3,
         response_format={"type": "json_object"},
     )
-    llm_tracker.record(is_local=False)
-    record_usage(response, "unpack", model, is_local=False)
     result = json.loads(response.choices[0].message.content)
     return result.get("sections", result) if isinstance(result, dict) else result
 
@@ -370,20 +390,23 @@ Respond with ONLY a single integer.
 Summary:
 {summary_text}"""
 
-    model = _get_chat_model("light") if use_local else _get_cloud_chat_model()
-    kwargs = {}
-    if use_local:
-        kwargs["api_base"] = settings.ollama_base_url
-
     try:
-        response = await litellm.acompletion(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            **kwargs,
-        )
-        llm_tracker.record(is_local=use_local)
-        record_usage(response, "score_quality", model, is_local=use_local)
+        if use_local:
+            model = _get_chat_model("light")
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                api_base=settings.ollama_base_url,
+            )
+            llm_tracker.record(is_local=True)
+            record_usage(response, "score_quality", model, is_local=True)
+        else:
+            response = await _cloud_completion(
+                "score_quality",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+            )
         score_str = response.choices[0].message.content.strip()
         return max(1, min(10, int(score_str)))
     except (ValueError, Exception) as e:
@@ -414,20 +437,23 @@ Respond with ONLY a JSON array of strings, e.g. ["AI & ML", "Cloud"]
 Text:
 {text[:3000]}"""
 
-    model = _get_chat_model("light") if use_local else _get_cloud_chat_model()
-    kwargs = {}
-    if use_local:
-        kwargs["api_base"] = settings.ollama_base_url
-
     try:
-        response = await litellm.acompletion(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            **kwargs,
-        )
-        llm_tracker.record(is_local=use_local)
-        record_usage(response, "tag_topics", model, is_local=use_local)
+        if use_local:
+            model = _get_chat_model("light")
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                api_base=settings.ollama_base_url,
+            )
+            llm_tracker.record(is_local=True)
+            record_usage(response, "tag_topics", model, is_local=True)
+        else:
+            response = await _cloud_completion(
+                "tag_topics",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+            )
         content = response.choices[0].message.content.strip()
         # Handle potential markdown wrapping
         if content.startswith("```"):
@@ -511,21 +537,27 @@ Respond with a JSON object:
   "related_questions": ["2-3 follow-up questions the user might ask"]
 }}"""
 
-    model = _get_chat_model("heavy") if use_local else _get_cloud_chat_model()
-    kwargs = {}
-    if use_local:
-        kwargs["api_base"] = settings.ollama_base_url
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
-    response = await litellm.acompletion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-        **kwargs,
-    )
-    llm_tracker.record(is_local=use_local)
-    record_usage(response, "rag_answer", model, is_local=use_local)
+    if use_local:
+        model = _get_chat_model("heavy")
+        response = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+            api_base=settings.ollama_base_url,
+        )
+        llm_tracker.record(is_local=True)
+        record_usage(response, "rag_answer", model, is_local=True)
+    else:
+        response = await _cloud_completion(
+            "rag_answer",
+            messages=messages,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
     return json.loads(response.choices[0].message.content)

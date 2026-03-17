@@ -18,11 +18,13 @@ class Settings(BaseSettings):
     llm_mode_light: str = "auto"   # embed, tag_topics, score_quality
     llm_mode_heavy: str = "auto"   # summarize, rag_answer
 
-    # Cloud fallback
+    # Cloud fallback (tried in order: cohere -> openai -> anthropic)
+    co_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
-    cloud_chat_model: str = "gpt-4o-mini"
-    cloud_chat_fallback: str = "claude-haiku-3-5"
+    cloud_chat_model: str = "cohere/command-r"
+    cloud_chat_fallback: str = "gpt-4o-mini"
+    cloud_chat_fallback_2: str = "claude-haiku-3-5"
     cloud_embed_model: str = "text-embedding-3-small"
 
     # Database

@@ -92,7 +92,6 @@ def _extract_entry_content(entry) -> str | None:
 
 
 def _strip_html(html: str) -> str:
-    """Remove HTML tags and collapse whitespace."""
     import re
     text = re.sub(r"<[^>]+>", " ", html)
     text = re.sub(r"\s+", " ", text).strip()
@@ -100,7 +99,6 @@ def _strip_html(html: str) -> str:
 
 
 def _parse_published(entry):
-    """Parse published date from feed entry."""
     from datetime import datetime, timezone
     import time
 
@@ -115,7 +113,6 @@ def _parse_published(entry):
 
 
 def _extract_thumbnail(entry, source: FeedSource) -> str | None:
-    """Extract thumbnail URL from feed entry."""
     # YouTube videos have predictable thumbnails
     if source.source_type == "youtube":
         video_id = _extract_youtube_video_id(entry)
@@ -135,7 +132,6 @@ def _extract_thumbnail(entry, source: FeedSource) -> str | None:
 
 
 def _extract_youtube_video_id(entry) -> str | None:
-    """Extract YouTube video ID from feed entry."""
     # YouTube RSS entries have yt:videoId tag
     video_id = entry.get("yt_videoid")
     if video_id:

@@ -51,7 +51,6 @@ def start_fetch_in_background() -> dict:
 
 
 async def _background_fetch():
-    """Run the fetch pipeline with its own DB session."""
     from app.core.database import async_session
 
     async with _fetch_lock:
@@ -143,7 +142,7 @@ async def _run_fetch(db: AsyncSession) -> dict:
 
 
 async def _fetch_source(db: AsyncSession, source: FeedSource) -> list[FeedItem]:
-    """Dispatch to the appropriate fetcher based on source type. Returns new items."""
+    """Dispatch to the appropriate fetcher based on source type."""
     if source.source_type in ("rss", "youtube"):
         from app.services.rss_fetcher import fetch_rss_source
         return await fetch_rss_source(db, source)
@@ -157,7 +156,6 @@ async def _fetch_source(db: AsyncSession, source: FeedSource) -> list[FeedItem]:
 
 
 async def _get_focused_topics(db: AsyncSession) -> list[str]:
-    """Load focused topics from user_settings."""
     result = await db.execute(
         select(UserSetting).where(UserSetting.key == "focused_topics")
     )

@@ -4,7 +4,7 @@ A personal AI-powered knowledge digest system. Think Perplexity Discover meets r
 
 I built this to solve my own "Pocket graveyard" problem. Saving dozens of articles and YouTube videos every week, accumulating cobwebs of bookmarks, never actually finding time to read them, and forgetting where I saw something useful three months later.
 
-Distill captures URLs, summarizes them into scannable digests, clusters related content, and lets you promote the good stuff into a searchable personal knowledge base with RAG. It also replaces my generic feed reader with something curated around specific topics I actually care about.
+Distill captures URLs, summarizes them into scannable digests, clusters related content, and lets you promote the good stuff into a searchable personal knowledge base with RAG. It also doubles as a feed reader curated around topics I actually care about.
 
 ## How it works
 
@@ -65,10 +65,10 @@ This starts the backend on `localhost:8000` and frontend on `localhost:3000`.
 
 See `.env.example` for all configuration options. The important ones:
 
-- `DATABASE_URL` — Postgres connection string
-- `OLLAMA_BASE_URL` — defaults to `http://localhost:11434`
-- `LLM_MODE_HEAVY` / `LLM_MODE_LIGHT` — `auto` (local-first), `cloud`, or `local`
-- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` — only needed if you want cloud fallback
+- `DATABASE_URL` - Postgres connection string
+- `OLLAMA_BASE_URL` - defaults to `http://localhost:11434`
+- `LLM_MODE_HEAVY` / `LLM_MODE_LIGHT` - `auto` (local-first), `cloud`, or `local`
+- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` - only needed if you want cloud fallback
 
 ## Project structure
 

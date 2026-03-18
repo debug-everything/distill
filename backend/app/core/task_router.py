@@ -41,7 +41,6 @@ async def refresh_focused_topics():
 
 
 def _get_focused_topics_prompt() -> str:
-    """Return the focused topics as a comma-separated string, or empty string."""
     if not _focused_topics_cache:
         return ""
     return ", ".join(_focused_topics_cache)
@@ -55,7 +54,7 @@ litellm.suppress_debug_info = True
 # ---------------------------------------------------------------------------
 
 class LLMTracker:
-    """Tracks which LLM provider is being used across all AI calls."""
+    """Tracks which LLM provider (local/cloud) is active across all AI calls."""
 
     def __init__(self):
         self.current_mode: str | None = None  # "local" | "cloud" | None
@@ -113,7 +112,6 @@ def _track(fn):
 # ---------------------------------------------------------------------------
 
 async def _ollama_available() -> bool:
-    """Check if Ollama is reachable."""
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             resp = await client.get(f"{settings.ollama_base_url}/api/tags")
@@ -123,12 +121,7 @@ async def _ollama_available() -> bool:
 
 
 async def _should_use_local(tier: str) -> bool:
-    """Determine whether to use local model based on mode config and availability.
-
-    tier: "light" or "heavy"
-    Returns True for local, False for cloud.
-    Raises RuntimeError if mode=local but Ollama is unreachable.
-    """
+    """Raises RuntimeError if mode=local but Ollama is unreachable."""
     mode = settings.llm_mode_light if tier == "light" else settings.llm_mode_heavy
 
     if mode == "cloud":
@@ -143,14 +136,12 @@ async def _should_use_local(tier: str) -> bool:
 
 
 def _get_chat_model(tier: str = "heavy") -> str:
-    """Get the local model name for the given tier, formatted for LiteLLM."""
     if tier == "heavy":
         return f"ollama/{settings.local_chat_heavy}"
     return f"ollama/{settings.local_chat_light}"
 
 
 def _get_cloud_chat_models() -> list[str]:
-    """Return ordered list of cloud chat models to try (primary -> fallbacks)."""
     models = [settings.cloud_chat_model]
     if settings.cloud_chat_fallback:
         models.append(settings.cloud_chat_fallback)
@@ -160,12 +151,11 @@ def _get_cloud_chat_models() -> list[str]:
 
 
 def _get_cloud_chat_model() -> str:
-    """Return primary cloud chat model (for simple callers)."""
     return settings.cloud_chat_model
 
 
 async def _cloud_completion(task_name: str, **kwargs) -> object:
-    """Try cloud chat models in fallback order. Returns the first successful response."""
+    """Try cloud chat models in fallback order until one succeeds."""
     models = _get_cloud_chat_models()
     last_error = None
     for model in models:
@@ -376,11 +366,7 @@ Text:
 
 @_track
 async def score_quality(summary_text: str) -> int:
-    """
-    Score the quality of a summary on a scale of 1-10.
-
-    Uses chat-light tier (fast, cheap).
-    """
+    """Score summary quality 1-10. Uses chat-light tier."""
     use_local = await _should_use_local("light")
 
     prompt = f"""Rate the quality of this summary on a scale of 1-10.
@@ -416,11 +402,7 @@ Summary:
 
 @_track
 async def tag_topics(text: str) -> list[str]:
-    """
-    Auto-tag content with 1-3 topic labels.
-
-    Uses chat-light tier.
-    """
+    """Auto-tag content with 1-3 topic labels. Uses chat-light tier."""
     use_local = await _should_use_local("light")
 
     topics_hint = _get_focused_topics_prompt()

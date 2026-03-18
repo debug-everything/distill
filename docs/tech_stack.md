@@ -1,13 +1,13 @@
 # Tech Stack Recommendations
-## Distill — Library & Tooling Decisions
+## Distill - Library & Tooling Decisions
 **Version:** 0.3
 **References:** architecture.md
 
-> Key constraint: embedding model must be consistent across all envs — lock it early.
+> Key constraint: embedding model must be consistent across all envs. Lock it early.
 
 ---
 
-## Frontend (Next.js — localhost:3000)
+## Frontend (Next.js, localhost:3000)
 
 | Concern | Recommendation | Rationale |
 |---|---|---|
@@ -20,7 +20,7 @@
 
 ---
 
-## Backend (FastAPI — localhost:8000)
+## Backend (FastAPI, localhost:8000)
 
 | Concern | Recommendation | Rationale |
 |---|---|---|
@@ -47,6 +47,7 @@ All AI calls go through `app/core/task_router.py`. No direct model calls elsewhe
 | **chat-heavy** (summarize, RAG) | `qwen2.5:14b` (PC) / `llama3.1:8b` (Mac) | Best instruction-following at respective hardware limits |
 | **chat-light** (quality score, tagging) | `llama3.1:8b` (PC+Mac) | Fast, cheap; lightweight tasks don't need 14B |
 | **embedder** (all embedding) | `nomic-embed-text` via Ollama | 768d; free; strong RAG benchmark scores |
+| Cloud chat primary | **cohere/command-r** (Cohere) | Strong RAG/summarization; free tier available |
 | Cloud chat fallback | **gpt-4o-mini** (OpenAI) | Best cost/quality for summarization; ~$0.15/1M input tokens |
 | Cloud chat fallback 2 | **claude-haiku-3.5** (Anthropic) | Rate-limit backup; fast and cheap |
 | Cloud embed fallback | **text-embedding-3-small** (OpenAI) | Configured to output 768d via `dimensions` parameter |
@@ -58,7 +59,7 @@ nomic-embed-text       → 768 dimensions (local default)
 text-embedding-3-small → 768 dimensions (cloud fallback, dimensions=768)
 
 Both providers produce compatible 768d vectors.
-Lock EMBED_MODEL env var — never split across environments.
+Lock EMBED_MODEL env var. Never split across environments.
 ```
 
 ---
@@ -67,9 +68,9 @@ Lock EMBED_MODEL env var — never split across environments.
 
 | Concern | Recommendation | Rationale |
 |---|---|---|
-| Primary DB | **Neon Postgres** (free tier) | Serverless, pgvector-enabled, accessible from all envs |
+| Primary DB | **Postgres + pgvector** | Local Docker (`pgvector/pgvector:pg17`) or any cloud-hosted Postgres |
 | Vector search | **pgvector** (HNSW index) | Avoids separate vector DB; JOINs with metadata work natively |
-| Connection | `asyncpg` + PgBouncer pooler DSN | Use Neon's pooler endpoint from day one |
+| Connection | `asyncpg` via SQLAlchemy | SSL auto-enabled when URL contains "neon" or similar cloud patterns |
 | pgvector client | **pgvector-python** | SQLAlchemy integration for vector columns |
 
 ---
@@ -81,7 +82,7 @@ Lock EMBED_MODEL env var — never split across environments.
 | Frontend | **Next.js on localhost:3000** | Proxies all API calls to FastAPI backend |
 | Backend | **FastAPI on localhost:8000** | All processing, AI routing, DB access |
 | Local AI | **Ollama on localhost:11434** | Local model management |
-| Database | **Neon Postgres** (cloud) | Shared across PC and Mac |
+| Database | **Postgres + pgvector** | Local Docker or cloud-hosted, shared across envs |
 
 Cloud deployment (Vercel + Render) deferred to future phase.
 
@@ -97,16 +98,17 @@ LOCAL_CHAT_HEAVY=qwen2.5:14b  # override to llama3.1:8b on mac
 LOCAL_CHAT_LIGHT=llama3.1:8b
 LOCAL_EMBED_MODEL=nomic-embed-text
 
-# Cloud fallback (always set; only used when Ollama unavailable)
+# Cloud fallback chain (tried in order; only used when Ollama unavailable)
+CO_API_KEY=...
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
-CLOUD_CHAT_MODEL=gpt-4o-mini
-CLOUD_CHAT_FALLBACK=claude-haiku-3-5
+CLOUD_CHAT_MODEL=cohere/command-r
+CLOUD_CHAT_FALLBACK=gpt-4o-mini
+CLOUD_CHAT_FALLBACK_2=claude-haiku-3-5
 CLOUD_EMBED_MODEL=text-embedding-3-small
 
-# Database
-DATABASE_URL=postgresql://...          # direct connection
-DATABASE_POOLER_URL=postgresql://...   # PgBouncer pooler DSN
+# Database (local Docker or cloud-hosted Postgres)
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/distill
 ```
 
 ---
@@ -119,7 +121,7 @@ DATABASE_POOLER_URL=postgresql://...   # PgBouncer pooler DSN
 | JS package manager | **pnpm** | Faster than npm; disk-efficient |
 | Python linting | **ruff** | Replaces flake8 + black; single tool |
 | API testing | **Bruno** | Open-source Postman alternative |
-| DB GUI | **TablePlus** | Clean Neon/Postgres inspection |
+| DB GUI | **TablePlus** | Clean Postgres inspection |
 
 ---
 
@@ -130,5 +132,4 @@ DATABASE_POOLER_URL=postgresql://...   # PgBouncer pooler DSN
 | LangChain / LlamaIndex | Direct LiteLLM + prompt templates keeps you closer to the metal; better for learning |
 | Qdrant / Chroma / Pinecone | pgvector covers all MVP needs; avoids a second service |
 | Celery + Redis | APScheduler sufficient for single-user batch |
-| Supabase | Neon is simpler for pure Postgres use |
-| @neondatabase/serverless | Not needed — no Vercel edge functions; FastAPI connects via asyncpg |
+| Supabase | Plain Postgres is simpler for this use case |

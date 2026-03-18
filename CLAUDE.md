@@ -10,6 +10,7 @@ All design docs live in `/docs/` — read these before making architectural chan
 - `tech_stack.md` — Library choices and rationale
 - `implementation_plan.md` — Phased roadmap (0-5)
 - `ux_wireframes.md` — UI wireframes
+- `ai_patterns.md` — AI/LLM design patterns catalog
 
 ## Project Structure
 
@@ -39,14 +40,14 @@ make db-reset     # destroy volume and start fresh
 make migrate      # run Alembic migrations (alembic upgrade head)
 ```
 
-Local Docker and remote Neon are interchangeable — swap the `DATABASE_URL` in `.env`. SSL is auto-enabled only when the URL contains "neon".
+Local Docker and cloud-hosted Postgres are interchangeable — just swap the `DATABASE_URL` in `.env`. SSL is auto-enabled for cloud hosts.
 
 ## Key Conventions
 
 - **Package managers**: `uv` for Python, `pnpm` for JS. Never use pip/npm/yarn.
 - **API proxy**: Next.js rewrites `/api/*` and `/health` to FastAPI (localhost:8000). No direct DB access from frontend.
 - **AI calls**: All LLM/embedding calls go through `backend/app/core/task_router.py` via LiteLLM. Ollama local-first, cloud fallback.
-- **DB**: Postgres + pgvector. Local Docker (`pgvector/pgvector:pg17`) or remote Neon — configured via `DATABASE_URL` in `.env`. SSL auto-enabled for Neon. Alembic for migrations.
+- **DB**: Postgres + pgvector. Local Docker (`pgvector/pgvector:pg17`) or any cloud-hosted Postgres — configured via `DATABASE_URL` in `.env`. SSL auto-enabled for cloud hosts. Alembic for migrations.
 - **Settings**: Client-side preferences (theme, text size, tile format/layout) in Zustand with `persist` middleware.
 - **Long-running tasks**: Process endpoints return immediately, work runs in background asyncio tasks. Frontend polls status.
 - **Design Philosophy**: Avoid bloated and code duplications. Favor known design patterns, DRY, low-coupling and high-cohesion.

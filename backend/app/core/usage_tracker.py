@@ -87,14 +87,12 @@ async def flush_to_db():
 
 
 async def _flush_loop():
-    """Background loop that flushes every FLUSH_INTERVAL_SECONDS."""
     while True:
         await asyncio.sleep(FLUSH_INTERVAL_SECONDS)
         await flush_to_db()
 
 
 def start_flush_loop():
-    """Start the background flush task."""
     global _flush_task
     if _flush_task is None:
         _flush_task = asyncio.get_event_loop().create_task(_flush_loop())

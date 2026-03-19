@@ -321,6 +321,12 @@ Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
 - [x] **Digest tile layout**: Title + subtitle above tags (was tags above title). Image floated right in CardContent so summary text wraps around it instead of side-by-side flex layout.
 - [x] Client-side filtering for feed (all unread items fetched in one query, filtered locally for accurate sidebar counts).
 
+### 11G2 - Feed: Future-Date Filtering & Retention Purge - DONE
+- [x] Skip future-dated RSS entries (scheduled/upcoming YouTube premieres, etc.) during fetch
+- [x] Configurable retention limit per source (`FEED_RETENTION_PER_SOURCE`, default 100)
+- [x] Auto-purge oldest non-captured items after each source fetch
+- [x] Captured items (linked to digest/KB) are never purged
+
 ### 11G - Feed: On-Demand Summarize - NOT STARTED
 On-demand per-item summarization for feed items that lack descriptions (common for YouTube RSS, sparse blog feeds).
 

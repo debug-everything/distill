@@ -2,9 +2,10 @@
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update, func as sa_func
+from sqlalchemy import delete, select, update, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_utils import sanitize
@@ -12,6 +13,10 @@ from app.core.task_router import tag_topics, refresh_focused_topics, llm_tracker
 from app.models.database import FeedItem, FeedSource, UserSetting
 
 logger = logging.getLogger(__name__)
+
+# Max items to keep per source. Oldest non-captured items are purged after each fetch.
+# Set to 0 to disable retention (keep everything).
+FEED_RETENTION_PER_SOURCE = int(os.environ.get("FEED_RETENTION_PER_SOURCE", "100"))
 
 _fetch_lock = asyncio.Lock()
 
@@ -117,6 +122,9 @@ async def _run_fetch(db: AsyncSession) -> dict:
                     item.topic_tags = []
                     item.topic_match_score = 0
 
+            # Purge old items beyond retention limit
+            await _purge_old_items(db, source)
+
             # Update source metadata
             source.last_fetched = datetime.now(timezone.utc)
             count_result = await db.execute(
@@ -153,6 +161,54 @@ async def _fetch_source(db: AsyncSession, source: FeedSource) -> list[FeedItem]:
     else:
         logger.warning("Unknown source type: %s", sanitize(source.source_type))
         return []
+
+
+async def _purge_old_items(db: AsyncSession, source: FeedSource):
+    """Delete oldest non-captured items beyond the retention limit for a source."""
+    if FEED_RETENTION_PER_SOURCE <= 0:
+        return
+
+    # Find the published_at cutoff: the Nth most recent item
+    # We keep captured items regardless (they're linked to digest/KB)
+    count_result = await db.execute(
+        select(sa_func.count(FeedItem.id)).where(
+            FeedItem.feed_source_id == source.id,
+            FeedItem.status != "captured",
+        )
+    )
+    total = count_result.scalar() or 0
+    if total <= FEED_RETENTION_PER_SOURCE:
+        return
+
+    # Get IDs of items to keep (most recent N by published_at, then created_at)
+    keep_subq = (
+        select(FeedItem.id)
+        .where(
+            FeedItem.feed_source_id == source.id,
+            FeedItem.status != "captured",
+        )
+        .order_by(
+            FeedItem.published_at.desc().nullslast(),
+            FeedItem.created_at.desc(),
+        )
+        .limit(FEED_RETENTION_PER_SOURCE)
+    )
+    keep_ids = (await db.execute(keep_subq)).scalars().all()
+
+    if not keep_ids:
+        return
+
+    # Delete everything else that's not captured
+    purge_result = await db.execute(
+        delete(FeedItem).where(
+            FeedItem.feed_source_id == source.id,
+            FeedItem.status != "captured",
+            FeedItem.id.notin_(keep_ids),
+        )
+    )
+    purged = purge_result.rowcount
+    if purged > 0:
+        logger.info("Purged %d old items from %s (retention: %d)", purged, sanitize(source.name), FEED_RETENTION_PER_SOURCE)
 
 
 async def _get_focused_topics(db: AsyncSession) -> list[str]:

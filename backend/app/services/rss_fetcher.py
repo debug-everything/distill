@@ -1,6 +1,7 @@
 """RSS/Atom feed fetcher — shared by YouTube channel and blog/site sources."""
 
 import logging
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -53,6 +54,12 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
         link = entry.get("link")
         content = _extract_entry_content(entry)
         published = _parse_published(entry)
+
+        # Skip future-dated entries (scheduled/upcoming broadcasts)
+        if published and published > datetime.now(timezone.utc):
+            logger.debug("Skipping future-dated entry: %s (%s)", title, published.isoformat())
+            continue
+
         domain = urlparse(link).netloc if link else None
         image_url = _extract_thumbnail(entry, source)
 

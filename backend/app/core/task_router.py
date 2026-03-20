@@ -446,6 +446,81 @@ Text:
         return ["General"]
 
 
+@_track
+async def summarize_sub_items(items: list[dict]) -> list[dict]:
+    """Generate one-line summaries for roundup sub-items in a single batched LLM call.
+
+    Items that already have a body >= 20 words are summarized to a single line.
+    Items with short bodies are returned with body as summary.
+    Uses chat-light tier to keep costs low.
+    """
+    # Separate items needing LLM summarization vs. already short enough
+    needs_summary = []
+    result = []
+    for i, item in enumerate(items):
+        body = item.get("body", "")
+        if len(body.split()) <= 25:
+            # Short enough to use as-is
+            result.append({**item, "summary": body})
+        else:
+            needs_summary.append((i, item))
+            result.append(item)  # placeholder, will be updated
+
+    if not needs_summary:
+        return result
+
+    # Build batched prompt
+    lines = []
+    for idx, (_, item) in enumerate(needs_summary):
+        lines.append(f"{idx + 1}. {item.get('title', 'Untitled')}: {item.get('body', '')[:300]}")
+
+    prompt = f"""Summarize each of the following {len(needs_summary)} items in ONE sentence each (max 30 words per summary).
+Respond with a JSON array of strings, where each string is the summary for the corresponding item.
+
+Items:
+{chr(10).join(lines)}"""
+
+    use_local = await _should_use_local("light")
+    try:
+        if use_local:
+            model = _get_chat_model("light")
+            response = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                api_base=settings.ollama_base_url,
+            )
+            llm_tracker.record(is_local=True)
+            record_usage(response, "summarize_sub_items", model, is_local=True)
+        else:
+            response = await _cloud_completion(
+                "summarize_sub_items",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
+
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        parsed = json.loads(content)
+
+        # Handle both {"summaries": [...]} and direct [...] format
+        summaries = parsed if isinstance(parsed, list) else parsed.get("summaries", parsed.get("items", []))
+
+        for idx, (orig_idx, item) in enumerate(needs_summary):
+            summary = summaries[idx] if idx < len(summaries) else item.get("body", "")[:100]
+            result[orig_idx] = {**item, "summary": summary}
+
+    except Exception as e:
+        logger.warning(f"summarize_sub_items: failed ({e}), using truncated bodies")
+        for orig_idx, item in needs_summary:
+            result[orig_idx] = {**item, "summary": item.get("body", "")[:100]}
+
+    return result
+
+
 def _trim_history(history: list[dict], budget: int = 4000) -> list[dict]:
     """Select recent conversation exchanges that fit within a character budget.
 

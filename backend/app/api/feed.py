@@ -56,6 +56,7 @@ class FeedItemOut(BaseModel):
     information_density: int | None
     topic_tags: list[str]
     topic_match_score: int
+    sub_items: list[dict] | None
     source_name: str | None
     status: str
     created_at: str
@@ -81,6 +82,12 @@ class FeedSummarizeResponse(BaseModel):
     content_style: str | None = None
     information_density: int | None = None
     cached: bool = False
+
+
+class FeedSourcePatch(BaseModel):
+    is_multi_story: bool | None = None
+    is_active: bool | None = None
+    name: str | None = None
 
 
 class SourceDetectRequest(BaseModel):
@@ -149,6 +156,28 @@ async def delete_source(source_id: str, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
+@router.patch("/api/feed/sources/{source_id}")
+async def update_source(source_id: str, req: FeedSourcePatch, db: AsyncSession = Depends(get_db)) -> FeedSourceOut:
+    """Update feed source settings (name, active, multi-story toggle)."""
+    result = await db.execute(select(FeedSource).where(FeedSource.id == source_id))
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    if req.name is not None:
+        source.name = req.name
+    if req.is_active is not None:
+        source.is_active = req.is_active
+    if req.is_multi_story is not None:
+        config = dict(source.config or {})
+        config["is_multi_story"] = req.is_multi_story
+        source.config = config
+
+    await db.commit()
+    await db.refresh(source)
+    return _source_to_out(source)
+
+
 @router.post("/api/feed/sources/detect")
 async def detect_source(req: SourceDetectRequest) -> SourceDetectResponse:
     """Auto-detect feed source type and resolve RSS URL from a user-provided URL.
@@ -212,6 +241,7 @@ def _item_to_out(i: FeedItem) -> FeedItemOut:
         information_density=i.information_density,
         topic_tags=i.topic_tags or [],
         topic_match_score=i.topic_match_score,
+        sub_items=i.sub_items,
         source_name=i.source_name,
         status=i.status,
         created_at=i.created_at.isoformat(),

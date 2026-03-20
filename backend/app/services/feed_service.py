@@ -9,8 +9,9 @@ from sqlalchemy import delete, select, update, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_utils import sanitize
-from app.core.task_router import tag_topics, refresh_focused_topics, llm_tracker
+from app.core.task_router import tag_topics, refresh_focused_topics, llm_tracker, summarize_sub_items
 from app.models.database import FeedItem, FeedSource, UserSetting
+from app.services.roundup_splitter import detect_multi_story, split_roundup
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,16 @@ async def _run_fetch(db: AsyncSession) -> dict:
             new_items = await _fetch_source(db, source)
             source_result["new_items"] = len(new_items)
             source_result["status"] = "done"
+
+            # Auto-detect multi-story sources on first fetch
+            if new_items and source.last_fetched is None:
+                await _auto_detect_multi_story(source, new_items)
+
+            # Process multi-story roundup items
+            is_multi = (source.config or {}).get("is_multi_story", False)
+            if is_multi and new_items:
+                status.stage = f"Splitting roundups: {source.name}"
+                await _process_roundup_items(new_items)
 
             # Tag topics and compute match scores for new items
             for item in new_items:
@@ -209,6 +220,36 @@ async def _purge_old_items(db: AsyncSession, source: FeedSource):
     purged = purge_result.rowcount
     if purged > 0:
         logger.info("Purged %d old items from %s (retention: %d)", purged, sanitize(source.name), FEED_RETENTION_PER_SOURCE)
+
+
+async def _auto_detect_multi_story(source: FeedSource, items: list[FeedItem]):
+    """On first fetch, check if this source produces roundup-style content and flag it."""
+    raw_htmls = [getattr(item, "_raw_html", None) or "" for item in items]
+    if detect_multi_story(raw_htmls, feed_title=source.name):
+        config = dict(source.config or {})
+        config["is_multi_story"] = True
+        source.config = config
+        logger.info("Auto-detected multi-story source: %s", sanitize(source.name))
+
+
+async def _process_roundup_items(items: list[FeedItem]):
+    """Split roundup items into sub-items and generate summaries."""
+    for item in items:
+        raw_html = getattr(item, "_raw_html", None)
+        if not raw_html:
+            continue
+
+        sub_items = split_roundup(raw_html)
+        if not sub_items:
+            continue
+
+        try:
+            sub_items = await summarize_sub_items(sub_items)
+        except Exception as e:
+            logger.warning("Sub-item summarization failed for %s: %s", sanitize(item.title or ""), e)
+
+        item.sub_items = sub_items
+        logger.debug("Split %s into %d sub-items", sanitize(item.title or ""), len(sub_items))
 
 
 async def _get_focused_topics(db: AsyncSession) -> list[str]:

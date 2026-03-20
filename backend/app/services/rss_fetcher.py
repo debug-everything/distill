@@ -53,6 +53,7 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
         title = entry.get("title", "Untitled")
         link = entry.get("link")
         content = _extract_entry_content(entry)
+        raw_html = _extract_entry_html(entry)
         published = _parse_published(entry)
 
         # Skip future-dated entries (scheduled/upcoming broadcasts)
@@ -76,6 +77,8 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
             source_name=source.name,
             status="unread",
         )
+        # Attach raw HTML as transient attr for roundup splitting (not persisted)
+        item._raw_html = raw_html
         db.add(item)
         new_items.append(item)
 
@@ -88,14 +91,17 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
 
 def _extract_entry_content(entry) -> str | None:
     """Get the best available text content from a feed entry, stripped of HTML."""
-    raw = None
-    if "content" in entry and entry["content"]:
-        raw = entry["content"][0].get("value", "")
-    else:
-        raw = entry.get("summary") or entry.get("description")
+    raw = _extract_entry_html(entry)
     if not raw:
         return None
     return _strip_html(raw)
+
+
+def _extract_entry_html(entry) -> str | None:
+    """Get the raw HTML content from a feed entry (before stripping tags)."""
+    if "content" in entry and entry["content"]:
+        return entry["content"][0].get("value", "")
+    return entry.get("summary") or entry.get("description")
 
 
 def _strip_html(html: str) -> str:

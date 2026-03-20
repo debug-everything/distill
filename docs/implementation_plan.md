@@ -327,7 +327,7 @@ Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
 - [x] Auto-purge oldest non-captured items after each source fetch
 - [x] Captured items (linked to digest/KB) are never purged
 
-### 11G - Feed: On-Demand Summarize - NOT STARTED
+### 11G - Feed: On-Demand Summarize - MOSTLY DONE
 On-demand per-item summarization for feed items that lack descriptions (common for YouTube RSS, sparse blog feeds).
 
 **Problem:** Many feed items only have a title - no description or content snippet. User can't triage effectively without understanding what the article is about.
@@ -341,9 +341,32 @@ On-demand per-item summarization for feed items that lack descriptions (common f
 - Reuses existing extraction + summarization infrastructure (no new LLM prompts)
 
 **Tasks:**
-- [ ] `POST /api/feed/{item_id}/summarize` endpoint - fetch URL, extract, summarize, cache to feed_item
+- [x] `POST /api/feed/{item_id}/summarize` endpoint - fetch URL, extract, summarize, cache to feed_item
+- [x] Handle edge cases: already summarized (return cached), no URL, extraction failure
 - [ ] Frontend: "Summarize" button on FeedItemCard, inline expansion with loading skeleton
-- [ ] Handle edge cases: already summarized (return cached), no URL, extraction failure
+
+### 11I - Feed: Multi-Story Roundup Detection & Splitting - DONE
+Auto-detect and split roundup/aggregated RSS entries (newsletters, digests, weekly curations) into individual sub-items at fetch time.
+
+**Problem:** Some feed sources (TLDR, Morning Brew, Import AI, etc.) publish single entries that aggregate 5-15 separate stories. These show up as one opaque feed item with no description. You have to click through to see what's inside.
+
+**Design:**
+- **Auto-detection** on first fetch: heuristic scan of raw HTML (heading density, external link count, numbered patterns, keyword matching in feed title)
+- **Manual toggle**: `PATCH /api/feed/sources/{id}` with `is_multi_story` flag stored in `FeedSource.config` JSONB (no migration needed)
+- **Splitting**: Three strategies tried in order — headings (`<h2>`/`<h3>`), HR separators, numbered items. Returns up to 15 sub-items per entry.
+- **Summarization**: Single batched LLM call (light tier) generates one-line summaries for all sub-items. Short items (<25 words) skip LLM entirely.
+- **Storage**: `feed_items.sub_items` JSONB column (Alembic migration `a1b2c3d4e5f6`). Each sub-item: `{title, body, url, category, summary}`.
+- **API**: `sub_items` exposed in `FeedItemOut` response schema. Frontend can render as expandable list under the parent feed item.
+
+**Tasks:**
+- [x] `sub_items` JSONB column on `feed_items` + Alembic migration
+- [x] `roundup_splitter.py` — `detect_multi_story()` and `split_roundup()` heuristics
+- [x] `summarize_sub_items()` in task_router.py — batched light-tier LLM call
+- [x] `rss_fetcher.py` — preserve raw HTML via `_extract_entry_html()` for splitter input
+- [x] `feed_service.py` — auto-detect on first fetch, split + summarize for multi-story sources
+- [x] `FeedItemOut` schema includes `sub_items`
+- [x] `PATCH /api/feed/sources/{id}` endpoint for toggling `is_multi_story` and other source settings
+- [ ] Frontend: render sub-items as expandable list on roundup feed cards
 
 ### 11H - Debounced Auto-Process on Capture - DONE
 Auto-trigger digest processing after feed items are captured, with a configurable debounce delay.

@@ -175,6 +175,7 @@ class FeedItem(Base):
     information_density: Mapped[int | None] = mapped_column(Integer)
     topic_tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     topic_match_score: Mapped[int] = mapped_column(Integer, default=0)
+    sub_items: Mapped[list | None] = mapped_column(JSONB)  # multi-story roundup sub-items
     source_name: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, default="unread")  # unread | read | archived | captured
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

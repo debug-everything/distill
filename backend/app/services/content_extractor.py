@@ -3,6 +3,8 @@
 import re
 from dataclasses import dataclass
 
+from app.core.security import validate_url
+
 
 @dataclass
 class ExtractionResult:
@@ -29,6 +31,7 @@ def is_youtube_url(url: str) -> bool:
 
 async def extract_content(url: str) -> ExtractionResult:
     """Detect URL type and dispatch to the appropriate extractor."""
+    validate_url(url)
     if is_youtube_url(url):
         from app.services.video_extractor import extract_video
         return await extract_video(url)

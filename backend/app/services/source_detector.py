@@ -133,7 +133,14 @@ async def _fetch_youtube_channel_name(channel_id: str) -> str:
     import feedparser
 
     feed_url = _YOUTUBE_RSS_BASE + channel_id
-    feed = feedparser.parse(feed_url)
+    safe_url = validate_url(feed_url)
+    async with httpx.AsyncClient(
+        timeout=10.0,
+        follow_redirects=True,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; Distill/1.0)"},
+    ) as client:
+        resp = await client.get(safe_url)
+    feed = feedparser.parse(resp.text)
     if feed.feed.get("title"):
         return feed.feed["title"]
     return f"YouTube ({channel_id})"
@@ -172,7 +179,14 @@ async def _detect_rss(url: str) -> DetectedSource:
     # HTML page — look for <link rel="alternate" type="application/rss+xml">
     feed_url = _find_feed_link(resp.text, url)
     if feed_url:
-        feed = feedparser.parse(feed_url)
+        safe_feed_url = validate_url(feed_url)
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; Distill/1.0)"},
+        ) as client:
+            feed_resp = await client.get(safe_feed_url)
+        feed = feedparser.parse(feed_resp.text)
         if not feed.bozo or feed.entries:
             name = feed.feed.get("title") or urlparse(url).netloc
             return DetectedSource(

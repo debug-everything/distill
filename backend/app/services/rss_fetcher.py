@@ -4,10 +4,12 @@ import logging
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_utils import sanitize
+from app.core.security import validate_url
 from app.models.database import FeedItem, FeedSource
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,16 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
         logger.warning("Source %s has no URL", sanitize(source.name))
         return []
 
-    feed = feedparser.parse(source.url)
+    # Fetch feed content via httpx with SSRF validation, then parse locally
+    safe_url = validate_url(source.url)
+    async with httpx.AsyncClient(
+        timeout=15.0,
+        follow_redirects=True,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; Distill/1.0)"},
+    ) as client:
+        resp = await client.get(safe_url)
+
+    feed = feedparser.parse(resp.text)
     if feed.bozo and not feed.entries:
         logger.error("Feed parse error for %s: %s", sanitize(source.name), feed.bozo_exception)
         return []

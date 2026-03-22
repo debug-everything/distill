@@ -68,7 +68,7 @@ async def _background_fetch():
                 result = await _run_fetch(db)
                 status.last_result = result
         except Exception as e:
-            logger.error(f"Background feed fetch failed: {e}")
+            logger.error("Background feed fetch failed: %s", e)
             status.last_result = {"ok": False, "detail": str(e)}
         finally:
             status.is_processing = False

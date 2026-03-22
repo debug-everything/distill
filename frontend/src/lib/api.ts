@@ -286,6 +286,30 @@ export function deleteKBItem(itemId: string): Promise<{ ok: boolean }> {
   });
 }
 
+// Document Upload
+export interface DocumentUploadResponse {
+  ok: boolean;
+  knowledge_item_id: string;
+  title: string;
+  chunk_count: number;
+  topic_tags: string[];
+  page_count: number;
+}
+
+export async function uploadDocument(file: File): Promise<DocumentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/api/documents/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`API error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 // Focused Topics (Settings)
 export interface FocusedTopicsResponse {
   topics: string[];

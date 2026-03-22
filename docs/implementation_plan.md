@@ -18,9 +18,9 @@
 | 6 | UX: Digest Polish | DONE | Empty states, focused topic badges, stale modal fix |
 | 7 | UX: Feedback & Loading | DONE | Skeleton loading, toast-based feedback |
 | 8 | UX: Knowledge Page | DONE | Conversation history, conversational RAG |
-| 9 | PDF/DOCX | NOT STARTED | Document ingestion CLI + web upload |
+| 9 | PDF Ingestion | DONE | PDF upload → chunk → embed → KB for RAG |
 | 10 | Unpack | DONE | On-demand drill-down, video timestamps, modal animation |
-| 11 | Feed: Newsletters + Sources | MOSTLY DONE | Gmail newsletters + RSS/YouTube aggregator → unified feed |
+| 11 | Feed: RSS/YouTube Sources | DONE | RSS/YouTube aggregator → unified feed (Gmail newsletters shelved) |
 
 ---
 
@@ -171,10 +171,31 @@ Current labels use abstract metaphors. Renamed to describe the destination:
 
 ---
 
-## Phase 9 - PDF/DOCX - NOT STARTED
-- [ ] `scripts/ingest_doc.py` CLI: PyMuPDF / python-docx → chunk → embed → KB
-- [ ] Web upload form alternative
-- [ ] Document sources in RAG results
+## Phase 9 - PDF Ingestion - DONE
+
+PDF upload and ingestion into the knowledge base for RAG retrieval.
+
+**Design:**
+- Web upload via `POST /api/documents/upload` (multipart file upload, max 50 MB)
+- PyMuPDF for text extraction, title from PDF metadata or filename fallback
+- Reuses existing pipeline: `chunk_text()` (1000/150) → `tag_topics()` → `embed()` → KnowledgeItem + Embedding rows
+- `source_type="document"` on KnowledgeItem, no Article row needed
+- Frontend: "Upload PDF" button on Knowledge page with progress feedback and toast confirmation
+- Document items show PDF badge in KB list, appear in RAG search results alongside articles/videos
+- Scanned/image PDFs rejected with clear error message
+
+**Chunk size upgrade:** Increased from 512/50 to 1000/150 for better context retention in dense documents. Existing KB items purged and need re-ingestion with new chunk sizes.
+
+**Tasks:**
+- [x] Add PyMuPDF dependency
+- [x] `document_extractor.py` — PDF text extraction + metadata
+- [x] `documents.py` API — upload endpoint with validation, extraction, chunking, tagging, embedding
+- [x] Register documents router in `main.py`
+- [x] Frontend: `uploadDocument()` API function (multipart FormData)
+- [x] Frontend: Upload button + file picker on Knowledge page, PDF badge on KB items
+- [x] `content_type` fallback in KB list uses `source_type` (handles documents without Article row)
+- [x] Chunk size bump: 512/50 → 1000/150 in `text_processing.py`
+- [x] Purge existing embeddings for re-ingestion with new chunk sizes
 
 ---
 
@@ -298,20 +319,7 @@ Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
   - **Focused Topics** (`id="focused-topics"`): add/remove topic pills with X buttons, count + max 20 indicator. Migrated from Capture page.
   - **LLM Usage** (`id="stats"`): cost tracking, token usage, provider stats. Migrated from Capture page (StatsCard component).
 - [x] Deep-linkable section anchors - Feed empty state links to `/settings#feed-sources`
-- [ ] **Gmail Newsletters** (`id="gmail"`, `Optional` badge): deferred to Phase 11F
-
-### 11F - Newsletter Sources (Gmail IMAP)
-- [ ] `app/services/email_fetcher.py`: IMAP connection via `imap_tools`, fetch unread since last fetch
-- [ ] Gmail credentials from `.env` (`GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`)
-- [ ] `app/services/newsletter_parser.py`: HTML email → split into individual items
-  - HTML structure analysis (h2/h3 headings, hr separators, repeated div patterns)
-  - Text heuristics (numbered lists, `---` separators, bold title + description patterns)
-  - Extract per-item: title, content text, linked URL (if present)
-  - Single-topic newsletters kept as one item
-- [ ] Each split item → `summarize()` + `tag_topics()` via task_router (newsletters get full summarization since full text is available)
-- [ ] Dedup via Message-ID stored as `guid` in `feed_items`
-- [ ] Mark Gmail messages as SEEN after processing
-- [ ] Gmail newsletter source auto-created from `.env` config
+- ~~**Gmail Newsletters**: shelved — most newsletter sources have equivalent RSS feeds, which avoids Gmail credential complexity and IMAP maintenance. Revisit if a high-value source has no RSS alternative.~~
 
 ### 11F-2 - Feed UX: Left Nav + Chronological Grouping - DONE
 - [x] **Feed page left sidebar** (desktop): All Sources, By Type (YouTube/RSS/Newsletter), individual sources - each with unread counts. Toggle-to-deselect, "Manage Sources" link. Mobile: filter pills fallback.
@@ -327,7 +335,7 @@ Storybook mockup: `src/stories/mockups/FeedMockups.stories.tsx` (screen 1)
 - [x] Auto-purge oldest non-captured items after each source fetch
 - [x] Captured items (linked to digest/KB) are never purged
 
-### 11G - Feed: On-Demand Summarize - MOSTLY DONE
+### 11G - Feed: On-Demand Summarize - DONE
 On-demand per-item summarization for feed items that lack descriptions (common for YouTube RSS, sparse blog feeds).
 
 **Problem:** Many feed items only have a title - no description or content snippet. User can't triage effectively without understanding what the article is about.
@@ -343,7 +351,7 @@ On-demand per-item summarization for feed items that lack descriptions (common f
 **Tasks:**
 - [x] `POST /api/feed/{item_id}/summarize` endpoint - fetch URL, extract, summarize, cache to feed_item
 - [x] Handle edge cases: already summarized (return cached), no URL, extraction failure
-- [ ] Frontend: "Summarize" button on FeedItemCard, inline expansion with loading skeleton
+- [x] Frontend: "Summarize" button on FeedItemCard, inline expansion with loading skeleton
 
 ### 11I - Feed: Multi-Story Roundup Detection & Splitting - DONE
 Auto-detect and split roundup/aggregated RSS entries (newsletters, digests, weekly curations) into individual sub-items at fetch time.
@@ -366,7 +374,8 @@ Auto-detect and split roundup/aggregated RSS entries (newsletters, digests, week
 - [x] `feed_service.py` — auto-detect on first fetch, split + summarize for multi-story sources
 - [x] `FeedItemOut` schema includes `sub_items`
 - [x] `PATCH /api/feed/sources/{id}` endpoint for toggling `is_multi_story` and other source settings
-- [ ] Frontend: render sub-items as expandable list on roundup feed cards
+- [x] Frontend: render sub-items as expandable list on roundup feed cards
+- [x] Frontend: roundup toggle (Layers icon) on Settings > Feed Sources per source
 
 ### 11H - Debounced Auto-Process on Capture - DONE
 Auto-trigger digest processing after feed items are captured, with a configurable debounce delay.
@@ -437,9 +446,10 @@ Auto-trigger digest processing after feed items are captured, with a configurabl
 
 ### UX Coherence - Flow-Driven IA Redesign (Option A)
 
-**Status:** DESIGN PHASE - iterating in Storybook (`src/stories/mockups/`)
+**Status:** DEFERRED — need more time using Feed + Digest in real daily workflow before committing to a merged reading surface. Revisit after a few weeks of usage.
 **Decision:** Option A (intent-based pages) chosen over adaptive single-page (B) and incremental (C).
 **Inspiration:** 37signals (Basecamp, HEY) - each screen answers one question; the cycle is the navigation; opinionated defaults over equal choices.
+**Latest thinking (March 2026):** Feed is becoming the primary daily reading surface, with Digest as an occasional batch output. A unified "Read" page that shows both Feed items and Digest clusters (with Digest as a sidebar filter type) would eliminate the two-page split. Backend stays as-is — frontend-only merge. Key open questions: interleaved vs sectioned layout, card format consistency, route naming. Deferring until real usage patterns are clearer.
 
 #### Why we're doing this
 Right now the pages are organized by system concept (Capture, Digest, Knowledge), not by what you actually want to do. The Capture page alone is a URL input, queue manager, pipeline trigger, topic config, and stats dashboard, five jobs on one screen. Nothing pulls you forward through the natural cycle. Two capture modes present a system distinction as a user choice.

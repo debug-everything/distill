@@ -9,11 +9,13 @@ import {
   Cloud,
   Copy,
   ExternalLink,
+  FileText,
   Loader2,
   Monitor,
   Search,
   SendHorizonal,
   Trash2,
+  Upload,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,7 @@ import {
   queryKB,
   fetchKB,
   deleteKBItem,
+  uploadDocument,
   type QueryResponse,
   type KBListResponse,
 } from "@/lib/api";
@@ -82,6 +85,29 @@ export default function KnowledgePage() {
       toast.error(err.message);
     },
   });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const upload = useMutation({
+    mutationFn: uploadDocument,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["kb"] });
+      toast.success(
+        `Indexed "${data.title}" — ${data.chunk_count} chunks, ${data.page_count} pages`,
+      );
+    },
+    onError: (err: Error) => {
+      const msg = err.message;
+      const match = msg.match(/"detail"\s*:\s*"([^"]+)"/);
+      toast.error(match?.[1] ?? msg);
+    },
+  });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) upload.mutate(file);
+    // Reset so same file can be re-selected
+    e.target.value = "";
+  };
 
   const askStartedAt = useRef<number>(0);
 
@@ -324,12 +350,36 @@ export default function KnowledgePage() {
 
       {/* KB items list */}
       <section>
-        <h2 className={`mb-4 font-medium ${ts.heading}`}>
-          Indexed Articles{" "}
-          {kb.data && (
-            <span className="text-muted-foreground">({kb.data.total})</span>
-          )}
-        </h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className={`font-medium ${ts.heading}`}>
+            Indexed Items{" "}
+            {kb.data && (
+              <span className="text-muted-foreground">({kb.data.total})</span>
+            )}
+          </h2>
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={upload.isPending}
+            >
+              {upload.isPending ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-1.5 h-4 w-4" />
+              )}
+              {upload.isPending ? "Ingesting..." : "Upload PDF"}
+            </Button>
+          </div>
+        </div>
 
         {/* Topic filter pills */}
         {kb.data && kb.data.topics.length > 0 && (
@@ -394,6 +444,12 @@ export default function KnowledgePage() {
                           <Badge variant="outline" className="text-xs">
                             <Video className="mr-1 h-3 w-3" />
                             Video
+                          </Badge>
+                        )}
+                        {item.content_type === "document" && (
+                          <Badge variant="outline" className="text-xs">
+                            <FileText className="mr-1 h-3 w-3" />
+                            PDF
                           </Badge>
                         )}
                         {item.extraction_quality === "low" && (

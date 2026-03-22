@@ -6,6 +6,13 @@ I built this to solve my own "Pocket graveyard" problem. Saving dozens of articl
 
 Distill captures URLs, summarizes them into scannable digests, clusters related content, and lets you promote the good stuff into a searchable personal knowledge base with RAG. It also doubles as a feed reader curated around topics I actually care about.
 
+## Screenshots
+
+<table><tr>
+<td><img src="screens/feed-default.jpg" alt="Feed — topic-ranked items from RSS and YouTube sources" height="300"></td>
+<td><img src="screens/kb-rag-query.jpg" alt="Knowledge Base — conversational RAG with cited sources" height="300"></td>
+</tr></table>
+
 ## How it works
 
 **Two capture modes:**

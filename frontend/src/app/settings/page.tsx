@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  Layers,
   Loader2,
   Plus,
   Rss,
@@ -24,6 +25,7 @@ import {
   fetchFeedSources,
   createFeedSource,
   deleteFeedSource,
+  updateFeedSource,
   detectFeedSource,
   type FeedSource,
   type SourceDetectResult,
@@ -135,6 +137,21 @@ function FeedSourcesSection() {
     onError: (err: Error) => {
       toast.error(err.message);
     },
+  });
+
+  const toggleMultiStory = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: boolean }) =>
+      updateFeedSource(id, { is_multi_story: value }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["feedSources"] });
+      const isOn = updated.config?.is_multi_story;
+      toast.success(
+        isOn
+          ? `"${updated.name}" marked as roundup — sub-items will be extracted on next fetch`
+          : `"${updated.name}" roundup mode disabled`,
+      );
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const handleDetect = () => {
@@ -256,6 +273,28 @@ function FeedSourcesSection() {
                 <Badge variant="outline" className="text-xs shrink-0">
                   {meta.label}
                 </Badge>
+                <button
+                  type="button"
+                  className={`shrink-0 transition-colors ${
+                    source.config?.is_multi_story
+                      ? "text-primary"
+                      : "text-muted-foreground/40 hover:text-muted-foreground"
+                  }`}
+                  onClick={() =>
+                    toggleMultiStory.mutate({
+                      id: source.id,
+                      value: !source.config?.is_multi_story,
+                    })
+                  }
+                  disabled={toggleMultiStory.isPending}
+                  title={
+                    source.config?.is_multi_story
+                      ? "Roundup mode on — click to disable"
+                      : "Enable roundup mode (splits multi-story entries into sub-items)"
+                  }
+                >
+                  <Layers className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   className="shrink-0 text-muted-foreground hover:text-destructive"

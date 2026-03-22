@@ -196,7 +196,7 @@ async def list_kb(
                 "topic_tags": ki.topic_tags or [],
                 "created_at": ki.created_at.isoformat(),
                 "chunk_count": chunk_count,
-                "content_type": content_type or "article",
+                "content_type": content_type or ki.source_type,
                 "extraction_quality": extraction_quality or "ok",
             }
             for ki, chunk_count, content_type, extraction_quality in rows

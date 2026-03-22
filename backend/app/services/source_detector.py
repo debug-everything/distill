@@ -33,10 +33,7 @@ class DetectedSource:
 
 
 async def detect_source(url: str) -> DetectedSource:
-    """Detect what kind of feed source a URL represents and resolve it.
-
-    Raises ValueError with a user-friendly message on failure.
-    """
+    """Raises ValueError with a user-friendly message on failure."""
     url = url.strip()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
@@ -90,7 +87,7 @@ async def _detect_youtube(url: str, parsed) -> DetectedSource:
 
 
 async def _resolve_youtube_channel_id(url: str) -> str:
-    """Fetch a YouTube channel page and extract the channel ID from HTML."""
+    """Scrape a YouTube channel page to find the channel ID."""
     safe_url = validate_url(url)
     async with httpx.AsyncClient(
         timeout=10.0,
@@ -133,7 +130,6 @@ async def _resolve_youtube_channel_id(url: str) -> str:
 
 
 async def _fetch_youtube_channel_name(channel_id: str) -> str:
-    """Fetch the channel name from the RSS feed title."""
     import feedparser
 
     feed_url = _YOUTUBE_RSS_BASE + channel_id
@@ -193,7 +189,7 @@ async def _detect_rss(url: str) -> DetectedSource:
 
 
 def _looks_like_feed(content_type: str, body: str) -> bool:
-    """Heuristic: does this response look like an RSS/Atom feed?"""
+    """Heuristic check via content-type and XML markers."""
     feed_types = ("application/rss", "application/atom", "application/xml", "text/xml")
     if any(t in content_type for t in feed_types):
         return True
@@ -203,7 +199,6 @@ def _looks_like_feed(content_type: str, body: str) -> bool:
 
 
 def _find_feed_link(html: str, base_url: str) -> str | None:
-    """Extract RSS/Atom feed URL from HTML <link> tags."""
     from urllib.parse import urljoin
 
     # Match <link rel="alternate" type="application/rss+xml" href="...">

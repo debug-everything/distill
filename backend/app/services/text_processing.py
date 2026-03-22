@@ -4,15 +4,15 @@ import numpy as np
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 _splitter = RecursiveCharacterTextSplitter(
-    chunk_size=512,
-    chunk_overlap=50,
+    chunk_size=1000,
+    chunk_overlap=150,
     length_function=len,
     separators=["\n\n", "\n", ". ", " ", ""],
 )
 
 
 def chunk_text(text: str) -> list[str]:
-    """Split text into ~512 char chunks with overlap."""
+    """Split text into ~1000 char chunks with 150 char overlap."""
     if not text or not text.strip():
         return []
     return _splitter.split_text(text)
@@ -21,11 +21,7 @@ def chunk_text(text: str) -> list[str]:
 def cluster_by_similarity(
     embeddings: list[list[float]], threshold: float = 0.88
 ) -> list[list[int]]:
-    """
-    Group items by cosine similarity.
-
-    Returns list of clusters, each cluster is a list of indices.
-    """
+    """Returns list of clusters, each cluster is a list of indices."""
     if not embeddings:
         return []
 

@@ -41,10 +41,7 @@ learn_now_status = LearnNowStatus()
 
 
 async def index_article_to_kb(article: Article, db: AsyncSession) -> str:
-    """Chunk, embed, and store a single article in the knowledge base.
-
-    Returns the KnowledgeItem ID.
-    """
+    """Chunk, embed, and store an article in the knowledge base. Returns the KnowledgeItem ID."""
     text = article.clean_text or ""
     if not text.strip():
         raise ValueError(f"Article {article.id} has no extractable text")
@@ -97,7 +94,6 @@ async def index_article_to_kb(article: Article, db: AsyncSession) -> str:
 
 
 async def index_articles_to_kb(article_ids: list, db: AsyncSession) -> dict:
-    """Index multiple articles to KB. Returns summary of results."""
     results = {"indexed": 0, "failed": 0, "errors": []}
 
     for article_id in article_ids:
@@ -132,7 +128,6 @@ def start_learn_now_in_background(article_ids: list[str]) -> dict:
 
 
 async def _background_learn_now(article_ids: list[str]):
-    """Run learn-now pipeline with its own DB session."""
     from app.core.database import async_session
 
     async with _learn_now_lock:

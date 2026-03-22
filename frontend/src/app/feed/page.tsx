@@ -12,6 +12,7 @@ import {
   ChevronUp,
   ExternalLink,
   Flame,
+  Layers,
   Loader2,
   Mail,
   RefreshCw,
@@ -38,6 +39,7 @@ import {
   type FeedItem,
   type FeedFetchStatus,
   type FeedSource,
+  type FeedSubItem,
   type FeedSummarizeResponse,
 } from "@/lib/api";
 
@@ -559,10 +561,13 @@ function FeedItemCard({
   ts: { body: string; small: string; heading: string };
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [subItemsExpanded, setSubItemsExpanded] = useState(false);
   const Icon = SOURCE_ICONS[item.source_type] ?? Rss;
   const iconColor = SOURCE_COLORS[item.source_type] ?? "text-muted-foreground";
   const isMatched = item.topic_match_score > 0;
   const hasSummary = !!item.summary;
+  const hasSubItems = item.sub_items && item.sub_items.length > 0;
+  const PREVIEW_COUNT = 3;
 
   const summarize = useMutation({
     mutationFn: () => summarizeFeedItem(item.id),
@@ -593,6 +598,12 @@ function FeedItemCard({
           <Badge variant="outline" className="text-xs">
             {item.source_type}
           </Badge>
+          {hasSubItems && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              <Layers className="h-3 w-3" />
+              {item.sub_items!.length} stories
+            </Badge>
+          )}
           {item.published_at && (
             <span className={`ml-auto ${ts.small} text-muted-foreground`}>
               {timeAgo(item.published_at)}
@@ -618,8 +629,35 @@ function FeedItemCard({
           )}
         </div>
 
-        {/* Description snippet (hide when summary is expanded) */}
-        {item.content && !expanded && (
+        {/* Sub-items list for roundup feeds */}
+        {hasSubItems && (
+          <div className="space-y-1">
+            {(subItemsExpanded ? item.sub_items! : item.sub_items!.slice(0, PREVIEW_COUNT)).map(
+              (sub, i) => (
+                <SubItemRow key={i} sub={sub} ts={ts} />
+              ),
+            )}
+            {item.sub_items!.length > PREVIEW_COUNT && (
+              <button
+                type="button"
+                className={`flex items-center gap-1 ${ts.small} text-muted-foreground hover:text-foreground pt-0.5`}
+                onClick={() => setSubItemsExpanded(!subItemsExpanded)}
+              >
+                {subItemsExpanded ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                {subItemsExpanded
+                  ? "Show less"
+                  : `${item.sub_items!.length - PREVIEW_COUNT} more stories`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Description snippet (hide when summary is expanded or sub-items present) */}
+        {item.content && !expanded && !hasSubItems && (
           <p className={`line-clamp-2 ${ts.small} text-muted-foreground`}>
             {stripHtml(item.content).slice(0, 200)}
           </p>
@@ -643,7 +681,6 @@ function FeedItemCard({
                   <p className={`${ts.small} text-muted-foreground`}>
                     {(() => {
                       const msg = summarize.error.message;
-                      // Extract "detail" from API error JSON: 'API error: 422 {"detail":"..."}'
                       const match = msg.match(/"detail"\s*:\s*"([^"]+)"/);
                       return match?.[1] ?? msg;
                     })()}
@@ -669,7 +706,6 @@ function FeedItemCard({
                     ))}
                   </ul>
                 )}
-                {/* Content meta badges */}
                 {(item.content_style || (item.information_density != null && item.information_density >= 7)) && (
                   <div className="flex gap-1.5 pt-1">
                     {item.content_style && STYLE_LABELS[item.content_style] && (
@@ -696,7 +732,7 @@ function FeedItemCard({
             <Check className="mr-1 h-3.5 w-3.5" />
             Done
           </Button>
-          {item.url && (
+          {item.url && !hasSubItems && (
             <Button
               variant="ghost"
               size="sm"
@@ -742,5 +778,48 @@ function FeedItemCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Sub-item row for roundup feeds ────────────────────────────────────────────
+
+function SubItemRow({
+  sub,
+  ts,
+}: {
+  sub: FeedSubItem;
+  ts: { body: string; small: string; heading: string };
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 transition-colors group">
+      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <p className={`${ts.small} font-medium leading-snug line-clamp-1`}>
+            {sub.title}
+          </p>
+          {sub.category && (
+            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0">
+              {sub.category}
+            </Badge>
+          )}
+        </div>
+        {sub.summary && (
+          <p className={`text-xs text-muted-foreground leading-snug line-clamp-1`}>
+            {sub.summary}
+          </p>
+        )}
+      </div>
+      {sub.url && (
+        <a
+          href={sub.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+        >
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      )}
+    </div>
   );
 }

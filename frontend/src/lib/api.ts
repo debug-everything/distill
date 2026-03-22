@@ -286,6 +286,30 @@ export function deleteKBItem(itemId: string): Promise<{ ok: boolean }> {
   });
 }
 
+// Document Upload
+export interface DocumentUploadResponse {
+  ok: boolean;
+  knowledge_item_id: string;
+  title: string;
+  chunk_count: number;
+  topic_tags: string[];
+  page_count: number;
+}
+
+export async function uploadDocument(file: File): Promise<DocumentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/api/documents/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`API error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 // Focused Topics (Settings)
 export interface FocusedTopicsResponse {
   topics: string[];
@@ -391,6 +415,16 @@ export function deleteFeedSource(sourceId: string): Promise<{ ok: boolean }> {
   });
 }
 
+export function updateFeedSource(
+  sourceId: string,
+  patch: { is_multi_story?: boolean; is_active?: boolean; name?: string },
+): Promise<FeedSource> {
+  return apiFetch<FeedSource>(`/api/feed/sources/${sourceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
 export function detectFeedSource(url: string): Promise<SourceDetectResult> {
   return apiFetch<SourceDetectResult>("/api/feed/sources/detect", {
     method: "POST",
@@ -416,9 +450,18 @@ export interface FeedItem {
   information_density: number | null;
   topic_tags: string[];
   topic_match_score: number;
+  sub_items: FeedSubItem[] | null;
   source_name: string | null;
   status: string;
   created_at: string;
+}
+
+export interface FeedSubItem {
+  title: string;
+  body: string;
+  url: string | null;
+  category: string | null;
+  summary?: string;
 }
 
 export interface FeedListResponse {

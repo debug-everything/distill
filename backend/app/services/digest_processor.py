@@ -79,7 +79,6 @@ def schedule_deferred_processing():
 
 
 async def _background_process():
-    """Run the pipeline with its own DB session (independent of request lifecycle)."""
     from app.core.database import async_session
 
     async with _processing_lock:

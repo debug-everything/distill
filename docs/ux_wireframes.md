@@ -1,5 +1,5 @@
 # UX Wireframes
-## Distill — Screen Layouts & Interaction Flows
+## Distill - Screen Layouts & Interaction Flows
 **Version:** 0.3
 **References:** prd.md, architecture.md
 
@@ -84,7 +84,7 @@ Legend:
 
 ---
 
-## SCREEN 2: Digest Dashboard — Level 0 (Scan View)
+## SCREEN 2: Digest Dashboard - Level 0 (Scan View)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -133,7 +133,7 @@ Legend:
 
 ---
 
-## SCREEN 3: Digest Dashboard — Level 1 Drawer (Summary Tab)
+## SCREEN 3: Digest Dashboard - Level 1 Drawer (Summary Tab)
 
 ```
 ┌───────────────────────────────┐  dimmed dashboard behind
@@ -176,7 +176,7 @@ Legend:
 
 ---
 
-## SCREEN 4: Digest Dashboard — Level 2 (Sources Tab)
+## SCREEN 4: Digest Dashboard - Level 2 (Sources Tab)
 
 ```
 ┌───────────────────────────────┐
@@ -212,7 +212,7 @@ Legend:
 
 ---
 
-## SCREEN 5: Knowledge Base — RAG Query Interface
+## SCREEN 5: Knowledge Base - RAG Query Interface
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -274,7 +274,7 @@ On-Demand Processing
   → tag_topics() [chat-light]
   → embed(headlines) [embedder] → cosine cluster [no LLM]
   → merged cluster summary [chat-heavy] if 2+ items
-  → write clusters to Neon
+  → write clusters to DB
 
 Nightly Batch (9pm)
   APScheduler triggers same processing logic automatically
@@ -288,7 +288,7 @@ Dashboard (Level 0 → 1 → 2)
 
 RAG Query
   User types question
-  → embed(question) [same model as docs — enforced]
+  → embed(question) [same model as docs, enforced]
   → pgvector cosine search top-5
   → rag_answer(question, context) [chat-heavy]
   → answer + citations [1][2][3]

@@ -46,7 +46,6 @@ _DESCRIPTION_DEMO_KEYWORDS = [
 
 
 def _extract_video_id(url: str) -> str | None:
-    """Extract the video ID from various YouTube URL formats."""
     parsed = urlparse(url)
 
     # youtube.com/watch?v=ID

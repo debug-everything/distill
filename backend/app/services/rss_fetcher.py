@@ -1,6 +1,7 @@
 """RSS/Atom feed fetcher — shared by YouTube channel and blog/site sources."""
 
 import logging
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -52,7 +53,14 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
         title = entry.get("title", "Untitled")
         link = entry.get("link")
         content = _extract_entry_content(entry)
+        raw_html = _extract_entry_html(entry)
         published = _parse_published(entry)
+
+        # Skip future-dated entries (scheduled/upcoming broadcasts)
+        if published and published > datetime.now(timezone.utc):
+            logger.debug("Skipping future-dated entry: %s (%s)", title, published.isoformat())
+            continue
+
         domain = urlparse(link).netloc if link else None
         image_url = _extract_thumbnail(entry, source)
 
@@ -69,6 +77,8 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
             source_name=source.name,
             status="unread",
         )
+        # Attach raw HTML as transient attr for roundup splitting (not persisted)
+        item._raw_html = raw_html
         db.add(item)
         new_items.append(item)
 
@@ -81,18 +91,20 @@ async def fetch_rss_source(db: AsyncSession, source: FeedSource) -> list[FeedIte
 
 def _extract_entry_content(entry) -> str | None:
     """Get the best available text content from a feed entry, stripped of HTML."""
-    raw = None
-    if "content" in entry and entry["content"]:
-        raw = entry["content"][0].get("value", "")
-    else:
-        raw = entry.get("summary") or entry.get("description")
+    raw = _extract_entry_html(entry)
     if not raw:
         return None
     return _strip_html(raw)
 
 
+def _extract_entry_html(entry) -> str | None:
+    """Get the raw HTML content from a feed entry (before stripping tags)."""
+    if "content" in entry and entry["content"]:
+        return entry["content"][0].get("value", "")
+    return entry.get("summary") or entry.get("description")
+
+
 def _strip_html(html: str) -> str:
-    """Remove HTML tags and collapse whitespace."""
     import re
     text = re.sub(r"<[^>]+>", " ", html)
     text = re.sub(r"\s+", " ", text).strip()
@@ -100,7 +112,6 @@ def _strip_html(html: str) -> str:
 
 
 def _parse_published(entry):
-    """Parse published date from feed entry."""
     from datetime import datetime, timezone
     import time
 
@@ -115,7 +126,6 @@ def _parse_published(entry):
 
 
 def _extract_thumbnail(entry, source: FeedSource) -> str | None:
-    """Extract thumbnail URL from feed entry."""
     # YouTube videos have predictable thumbnails
     if source.source_type == "youtube":
         video_id = _extract_youtube_video_id(entry)
@@ -135,7 +145,6 @@ def _extract_thumbnail(entry, source: FeedSource) -> str | None:
 
 
 def _extract_youtube_video_id(entry) -> str | None:
-    """Extract YouTube video ID from feed entry."""
     # YouTube RSS entries have yt:videoId tag
     video_id = entry.get("yt_videoid")
     if video_id:

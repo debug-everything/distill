@@ -1,5 +1,5 @@
 # System Architecture
-## Distill — Technical Design Document
+## Distill - Technical Design Document
 **Version:** 0.3
 **References:** prd.md
 
@@ -7,8 +7,8 @@
 
 ## 1. Core Design Principles
 
-1. **Local-first architecture**: Next.js (localhost:3000) + FastAPI (localhost:8000) + Ollama + Neon Postgres. No cloud deployment in MVP. Both PC (RTX 5060 Ti) and MacBook M3 Pro are first-class development/runtime environments.
-2. **Cost-aware, task-aware routing**: Local Ollama models are preferred for cost and privacy. Cloud LLMs (gpt-4o-mini, claude-haiku) serve as automatic fallback when local hardware is unavailable. The routing decision is made per task type.
+1. **Local-first architecture**: Next.js (localhost:3000) + FastAPI (localhost:8000) + Ollama + Postgres (local Docker or any remote instance). No cloud deployment in MVP. Both PC (RTX 5060 Ti) and MacBook M3 Pro are first-class development/runtime environments.
+2. **Cost-aware, task-aware routing**: Local Ollama models are preferred for cost and privacy. Cloud LLMs serve as automatic fallback with a configurable chain (cohere/command-r → gpt-4o-mini → claude-haiku-3.5). The routing decision is made per task type.
 3. **Single task router**: All AI calls go through `task_router.py`. No direct LiteLLM or OpenAI calls elsewhere in the codebase. This is the only file that knows about model names, providers, or routing rules.
 4. **Embedding consistency**: Query embeddings and document embeddings MUST use the same model. The `embed()` function in `task_router.py` is the single enforcement point.
 5. **Not everything is AI**: Chunking and topic clustering (cosine math) are deterministic algorithms with zero LLM cost. Only summarization, RAG answering, quality scoring, and topic tagging require a model call.
@@ -55,24 +55,24 @@
    ┌────────────┼──────────────────────┐
    │  LLM TIER  │                      │
    │            ▼                      │
-   │  LOCAL (Ollama)    CLOUD (Fallback)│
-   │  ┌──────────────┐ ┌─────────────┐│
-   │  │ chat-heavy   │ │ gpt-4o-mini ││
-   │  │ qwen2.5:14b  │ │ (summarize, ││
-   │  │ PC·RTX 5060Ti│ │  RAG)       ││
-   │  ├──────────────┤ ├─────────────┤│
-   │  │ chat-light   │ │claude-haiku ││
-   │  │ llama3.1:8b  │ │ -3.5        ││
-   │  │ Mac·M3 Pro   │ │(rate backup)││
-   │  ├──────────────┤ ├─────────────┤│
-   │  │ embedder     │ │text-embed-  ││
-   │  │nomic-embed-  │ │3-small      ││
-   │  │text          │ │(768d)       ││
-   │  └──────────────┘ └─────────────┘│
-   └───────────────────────────────────┘
+   │  LOCAL (Ollama)    CLOUD (Fallback Chain)    │
+   │  ┌──────────────┐ ┌───────────────────────┐│
+   │  │ chat-heavy   │ │ 1. cohere/command-r   ││
+   │  │ qwen2.5:14b  │ │ 2. gpt-4o-mini       ││
+   │  │ PC·RTX 5060Ti│ │ 3. claude-haiku-3.5   ││
+   │  ├──────────────┤ ├───────────────────────┤│
+   │  │ chat-light   │ │ (same fallback chain) ││
+   │  │ llama3.1:8b  │ │                       ││
+   │  │ Mac·M3 Pro   │ │                       ││
+   │  ├──────────────┤ ├───────────────────────┤│
+   │  │ embedder     │ │ text-embedding-3-small││
+   │  │nomic-embed-  │ │ (768d)               ││
+   │  │text          │ │                       ││
+   │  └──────────────┘ └───────────────────────┘│
+   └─────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
-│                DATA LAYER (Neon Postgres — always-on)                │
+│                DATA LAYER (Postgres + pgvector)                      │
 │                                                                      │
 │  articles / clusters / cluster_sources / llm_usage / user_settings    │
 │  feed_sources / feed_items                                           │
@@ -106,15 +106,14 @@ RUNTIME_ENV=local-pc  →  chat-heavy: qwen2.5:14b (Ollama)
                           chat-light: llama3.1:8b (Ollama)
                           embedder:   nomic-embed-text (Ollama)
                           ↓ fallback if Ollama unreachable
-                          chat-heavy: gpt-4o-mini
-                          chat-light: gpt-4o-mini
-                          embedder:   text-embedding-3-small (dimensions=768)
+                          chat: cohere/command-r → gpt-4o-mini → claude-haiku-3.5
+                          embedder: text-embedding-3-small (dimensions=768)
 
 RUNTIME_ENV=local-mac →  chat-heavy: llama3.1:8b (Ollama)
                           chat-light: llama3.1:8b (Ollama)
                           embedder:   nomic-embed-text (Ollama)
                           ↓ fallback if Ollama unreachable
-                          (same cloud fallbacks)
+                          (same cloud fallback chain)
 ```
 
 ### 3.3 Quality Gate Flow (Post-MVP)
@@ -135,7 +134,7 @@ text-embedding-3-small → 768 dimensions (cloud fallback, using dimensions=768 
 
 The embed() function MUST be called for both document indexing
 and query embedding. Using different models produces incompatible
-vector spaces — cosine similarity returns garbage.
+vector spaces, and cosine similarity returns garbage.
 
 Enforced by: single embed() entry point in task_router.py
 ```
@@ -171,7 +170,7 @@ URL submitted with mode=learn_now
     → INSERT articles (status=queued, mode=learn_now)
     → chunk_text(clean_text)       [no LLM]
     → embed(chunks)                [embedder]
-    → INSERT knowledge_items + embeddings [Neon]
+    → INSERT knowledge_items + embeddings
     → UPDATE article status=kb_indexed
 ```
 
@@ -183,13 +182,13 @@ User clicks [Learn this] on digest cluster
     → fetch full clean_text from articles in cluster
     → chunk_text(clean_text)               [no LLM]
     → embed(chunks)                        [embedder]
-    → INSERT knowledge_items + embeddings  [Neon]
+    → INSERT knowledge_items + embeddings
     → UPDATE cluster SET status=promoted
 ```
 
 ### 4.4 Feed Pipeline (Newsletters + RSS Sources)
 
-The feed system has two input mechanisms that share the same processing and storage:
+The feed system has two input paths that share the same processing and storage:
 
 #### 4.4a Newsletter Fetch (Gmail IMAP)
 
@@ -210,7 +209,7 @@ On-demand "Fetch Newsletters" trigger
 
 **Newsletter splitting strategy:**
 Multi-item newsletters (TLDR, Morning Brew, etc.) use predictable structural
-patterns — numbered headings, horizontal rules, bold titles followed by
+patterns: numbered headings, horizontal rules, bold titles followed by
 descriptions. The parser uses a combination of HTML structure analysis
 (h2/h3 tags, hr elements, repeated div patterns) and text heuristics
 (numbered lists, "---" separators) to identify item boundaries. Single-topic
@@ -253,11 +252,11 @@ User submits question
     → return {answer, citations[{chunk_text, source_title, source_url}]}
 ```
 
-**Conversation history**: The client maintains an ephemeral array of Q&A pairs
-(session-scoped, not persisted). On each query, recent history is sent alongside
+**Conversation history**: The client keeps an ephemeral array of Q&A pairs
+(session-scoped, not persisted). On each query, recent history is sent with
 the question. The backend trims to a ~4000-character budget (whole exchanges only,
 walking backward, minimum 1 exchange) and injects into the `rag_answer()` prompt
-as conversation context. This enables follow-up questions like "tell me more" or
+as conversation context. This lets users ask follow-ups like "tell me more" or
 "how does that compare?" without server-side session state.
 
 ---
@@ -429,7 +428,7 @@ CREATE TABLE user_settings (
 | `local-pc` | qwen2.5:14b (Ollama) | nomic-embed-text | Primary processing env |
 | `local-mac` | llama3.1:8b (Ollama) | nomic-embed-text | Lighter model due to 16GB RAM |
 
-**Neon Postgres** is shared across both environments. Both envs read/write to the same DB.
+Postgres (local Docker or any remote instance) is shared across both environments. Both envs read/write to the same DB.
 
 Cloud deployment (Vercel + Render) deferred to future phase.
 
@@ -462,7 +461,9 @@ All endpoints are on FastAPI (localhost:8000). Next.js proxies API calls to Fast
 | `POST` | `/api/feed/{id}/capture` | Capture feed item → digest queue or KB |
 | `GET` | `/api/feed/sources` | List configured feed sources |
 | `POST` | `/api/feed/sources` | Add feed source (auto-discovers RSS) |
+| `POST` | `/api/feed/sources/detect` | Auto-detect source type and resolve RSS URL |
 | `DELETE` | `/api/feed/sources/{id}` | Remove feed source |
+| `POST` | `/api/feed/{id}/summarize` | On-demand summarize a feed item (cached) |
 | `GET` | `/api/stats` | LLM usage stats (costs, tokens, calls) |
 | `GET` | `/api/llm-status` | Current LLM provider status (local/cloud, active) |
 

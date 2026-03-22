@@ -2,16 +2,22 @@
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update, func as sa_func
+from sqlalchemy import delete, select, update, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_utils import sanitize
-from app.core.task_router import tag_topics, refresh_focused_topics, llm_tracker
+from app.core.task_router import tag_topics, refresh_focused_topics, llm_tracker, summarize_sub_items
 from app.models.database import FeedItem, FeedSource, UserSetting
+from app.services.roundup_splitter import detect_multi_story, split_roundup
 
 logger = logging.getLogger(__name__)
+
+# Max items to keep per source. Oldest non-captured items are purged after each fetch.
+# Set to 0 to disable retention (keep everything).
+FEED_RETENTION_PER_SOURCE = int(os.environ.get("FEED_RETENTION_PER_SOURCE", "100"))
 
 _fetch_lock = asyncio.Lock()
 
@@ -51,7 +57,6 @@ def start_fetch_in_background() -> dict:
 
 
 async def _background_fetch():
-    """Run the fetch pipeline with its own DB session."""
     from app.core.database import async_session
 
     async with _fetch_lock:
@@ -103,6 +108,16 @@ async def _run_fetch(db: AsyncSession) -> dict:
             source_result["new_items"] = len(new_items)
             source_result["status"] = "done"
 
+            # Auto-detect multi-story sources on first fetch
+            if new_items and source.last_fetched is None:
+                await _auto_detect_multi_story(source, new_items)
+
+            # Process multi-story roundup items
+            is_multi = (source.config or {}).get("is_multi_story", False)
+            if is_multi and new_items:
+                status.stage = f"Splitting roundups: {source.name}"
+                await _process_roundup_items(new_items)
+
             # Tag topics and compute match scores for new items
             for item in new_items:
                 status.stage = f"Tagging: {item.title[:50]}"
@@ -117,6 +132,9 @@ async def _run_fetch(db: AsyncSession) -> dict:
                     logger.error("Tagging failed for feed item %s: %s", sanitize(item.title or ""), e)
                     item.topic_tags = []
                     item.topic_match_score = 0
+
+            # Purge old items beyond retention limit
+            await _purge_old_items(db, source)
 
             # Update source metadata
             source.last_fetched = datetime.now(timezone.utc)
@@ -143,7 +161,7 @@ async def _run_fetch(db: AsyncSession) -> dict:
 
 
 async def _fetch_source(db: AsyncSession, source: FeedSource) -> list[FeedItem]:
-    """Dispatch to the appropriate fetcher based on source type. Returns new items."""
+    """Dispatch to the appropriate fetcher based on source type."""
     if source.source_type in ("rss", "youtube"):
         from app.services.rss_fetcher import fetch_rss_source
         return await fetch_rss_source(db, source)
@@ -156,8 +174,85 @@ async def _fetch_source(db: AsyncSession, source: FeedSource) -> list[FeedItem]:
         return []
 
 
+async def _purge_old_items(db: AsyncSession, source: FeedSource):
+    """Delete oldest non-captured items beyond the retention limit for a source."""
+    if FEED_RETENTION_PER_SOURCE <= 0:
+        return
+
+    # Find the published_at cutoff: the Nth most recent item
+    # We keep captured items regardless (they're linked to digest/KB)
+    count_result = await db.execute(
+        select(sa_func.count(FeedItem.id)).where(
+            FeedItem.feed_source_id == source.id,
+            FeedItem.status != "captured",
+        )
+    )
+    total = count_result.scalar() or 0
+    if total <= FEED_RETENTION_PER_SOURCE:
+        return
+
+    # Get IDs of items to keep (most recent N by published_at, then created_at)
+    keep_subq = (
+        select(FeedItem.id)
+        .where(
+            FeedItem.feed_source_id == source.id,
+            FeedItem.status != "captured",
+        )
+        .order_by(
+            FeedItem.published_at.desc().nullslast(),
+            FeedItem.created_at.desc(),
+        )
+        .limit(FEED_RETENTION_PER_SOURCE)
+    )
+    keep_ids = (await db.execute(keep_subq)).scalars().all()
+
+    if not keep_ids:
+        return
+
+    # Delete everything else that's not captured
+    purge_result = await db.execute(
+        delete(FeedItem).where(
+            FeedItem.feed_source_id == source.id,
+            FeedItem.status != "captured",
+            FeedItem.id.notin_(keep_ids),
+        )
+    )
+    purged = purge_result.rowcount
+    if purged > 0:
+        logger.info("Purged %d old items from %s (retention: %d)", purged, sanitize(source.name), FEED_RETENTION_PER_SOURCE)
+
+
+async def _auto_detect_multi_story(source: FeedSource, items: list[FeedItem]):
+    """On first fetch, check if this source produces roundup-style content and flag it."""
+    raw_htmls = [getattr(item, "_raw_html", None) or "" for item in items]
+    if detect_multi_story(raw_htmls, feed_title=source.name):
+        config = dict(source.config or {})
+        config["is_multi_story"] = True
+        source.config = config
+        logger.info("Auto-detected multi-story source: %s", sanitize(source.name))
+
+
+async def _process_roundup_items(items: list[FeedItem]):
+    """Split roundup items into sub-items and generate summaries."""
+    for item in items:
+        raw_html = getattr(item, "_raw_html", None)
+        if not raw_html:
+            continue
+
+        sub_items = split_roundup(raw_html)
+        if not sub_items:
+            continue
+
+        try:
+            sub_items = await summarize_sub_items(sub_items)
+        except Exception as e:
+            logger.warning("Sub-item summarization failed for %s: %s", sanitize(item.title or ""), e)
+
+        item.sub_items = sub_items
+        logger.debug("Split %s into %d sub-items", sanitize(item.title or ""), len(sub_items))
+
+
 async def _get_focused_topics(db: AsyncSession) -> list[str]:
-    """Load focused topics from user_settings."""
     result = await db.execute(
         select(UserSetting).where(UserSetting.key == "focused_topics")
     )

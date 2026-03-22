@@ -1,5 +1,5 @@
 # Product Requirements Document
-## Distill — Personal AI Knowledge & Digest System
+## Distill - Personal AI Knowledge & Digest System
 **Version:** 0.3
 **Last Updated:** March 2026
 **Status:** Draft
@@ -8,9 +8,9 @@
 
 ## 1. Overview
 
-Distill is a personal AI-powered knowledge management system that helps a single user capture, digest, and retrieve information from articles, YouTube videos, and documents. It solves the "read later graveyard" problem by transforming saved content into structured, scannable digests — and lets the user selectively promote high-value content into a searchable personal knowledge base (RAG).
+Distill is a personal AI-powered knowledge management system. I built it to capture, digest, and retrieve information from articles, YouTube videos, and documents. It solves the "read later graveyard" problem by turning saved content into structured, scannable digests, and lets me selectively promote high-value content into a searchable personal knowledge base (RAG).
 
-The system is designed **local-first**: all heavy AI processing (summarization, embedding, RAG) runs on the user's own hardware (PC with RTX 5060 Ti or MacBook M3 Pro) using Ollama. Cloud LLMs (gpt-4o-mini, claude-haiku) serve only as automatic fallback when local models are unavailable.
+It's **local-first**: all heavy AI processing (summarization, embedding, RAG) runs on my own hardware (PC with RTX 5060 Ti or MacBook M3 Pro) via Ollama. Cloud LLMs (gpt-4o-mini, claude-haiku) only kick in as automatic fallback when local models are unavailable.
 
 Two capture modes:
 - **Consume Later**: Queue articles for batch digest processing (nightly or on-demand)
@@ -66,7 +66,7 @@ Two capture modes:
 - This does NOT replace Notion or Obsidian (no manual note-taking)
 - This does NOT store content the user has not explicitly saved
 - This does NOT process paywalled content the DOM cannot access
-- Chunking is NOT an AI task — it is a deterministic algorithm with zero LLM cost
+- Chunking is NOT an AI task. It's a deterministic algorithm with zero LLM cost
 
 ---
 
@@ -209,18 +209,18 @@ Two capture modes:
 ## 10. Shelved Ideas (for future re-consideration)
 
 ### KB-Aware Novelty Summarization
-Instead of prompt-only novelty bias, pass existing KB topic tags or recent chunk summaries as context to the summarizer. Ask the LLM to explicitly highlight what is *new* relative to the user's existing knowledge. More accurate but adds tokens/cost. Re-evaluate once KB reaches meaningful size.
+Instead of prompt-only novelty bias, pass existing KB topic tags or recent chunk summaries as context to the summarizer. Have the LLM explicitly highlight what's *new* relative to what I already know. More accurate but adds tokens/cost. Worth revisiting once the KB reaches meaningful size.
 
 ### Separate Content Scoring Step
-A dedicated `score_content()` LLM call (separate from `summarize()`) that evaluates information density, content style, and novelty independently. Cleaner separation of concerns, potentially more accurate scoring. Worth experimenting with especially if achievable using local LLM at near-zero cost. Currently, content style and information density are extracted as part of `summarize()` output.
+A dedicated `score_content()` LLM call (separate from `summarize()`) that rates information density, content style, and novelty independently. Cleaner separation of concerns, probably more accurate scoring. Worth trying if I can do it on the local LLM at near-zero cost. Right now, content style and information density are extracted as part of `summarize()` output.
 
-### Improved Quote Extraction (Option C — pre-extract + fallback)
+### Improved Quote Extraction (Option C: pre-extract + fallback)
 Current approach: LLM generates quotes as part of `summarize()` JSON output. Problems: may hallucinate/paraphrase, competing for attention with 6 other fields, format instability.
 
 **Planned approach (3 parts):**
 1. **Structured format**: Change prompt to return `{text, speaker}` objects instead of plain strings. Embrace the format the LLM naturally wants to produce. Update frontend to display speaker attribution.
 2. **Regex pre-extraction**: Before summarization, extract all real quoted text from the article using patterns (`"..."` + attribution like "said X", "according to X"). Pass candidates into the summarize prompt and ask LLM to select the 1-3 most insightful/controversial. Guarantees verbatim accuracy, zero extra LLM cost.
-3. **Fallback for quote-less content**: When regex finds zero candidates (tutorials, opinion pieces, YouTube transcripts), fall back to asking the LLM to extract "key statements" or "key claims" — clearly labeled differently from direct quotes.
+3. **Fallback for quote-less content**: When regex finds zero candidates (tutorials, opinion pieces, YouTube transcripts), fall back to asking the LLM to extract "key statements" or "key claims", clearly labeled differently from direct quotes.
 
 **Implementation notes:**
 - Regex extractor goes in a new helper (e.g., `text_processing.py`)
@@ -231,7 +231,7 @@ Current approach: LLM generates quotes as part of `summarize()` JSON output. Pro
 ---
 
 ## 11. Out-of-Scope References
-- See `architecture.md` for system design, data model, and deployment
-- See `tech_stack.md` for library and tooling decisions
-- See `implementation_plan.md` for phased build roadmap
-- See `ux_wireframes.md` for screen layouts and interaction flows
+- `architecture.md` - system design, data model, deployment
+- `tech_stack.md` - library and tooling decisions
+- `implementation_plan.md` - phased build roadmap
+- `ux_wireframes.md` - screen layouts and interaction flows

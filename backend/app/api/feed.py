@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.log_utils import sanitize
+from app.core.security import validate_url
 from app.models.database import FeedItem, FeedSource
 from app.services.feed_service import start_fetch_in_background, status as fetch_status
 
@@ -132,6 +133,12 @@ async def create_source(req: FeedSourceCreate, db: AsyncSession = Depends(get_db
     if req.source_type not in ("rss", "youtube", "newsletter"):
         raise HTTPException(status_code=400, detail="source_type must be rss, youtube, or newsletter")
 
+    if req.url:
+        try:
+            validate_url(req.url)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=f"Invalid URL: {e}")
+
     source = FeedSource(
         source_type=req.source_type,
         name=req.name,
@@ -193,7 +200,7 @@ async def detect_source(req: SourceDetectRequest) -> SourceDetectResponse:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error("Source detection failed for %s: %s", sanitize(req.url), e)
-        raise HTTPException(status_code=422, detail=f"Could not detect feed source: {e}")
+        raise HTTPException(status_code=422, detail="Could not detect feed source — check the URL and try again")
 
     return SourceDetectResponse(
         source_type=result.source_type,
@@ -372,7 +379,7 @@ async def summarize_feed_item(item_id: str, db: AsyncSession = Depends(get_db)):
         )
     except Exception as e:
         logger.error("Summarize failed for feed item %s: %s", sanitize(item_id), e)
-        raise HTTPException(status_code=500, detail=f"Summarization failed: {e}")
+        raise HTTPException(status_code=500, detail="Summarization failed — check server logs for details")
 
     # Cache on the feed item
     summary_text = summary_result.get("summary", "")

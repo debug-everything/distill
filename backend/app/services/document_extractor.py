@@ -5,6 +5,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+MAX_PAGES = 500
+MAX_TEXT_BYTES = 5 * 1024 * 1024  # 5 MB of extracted text
+
 
 def extract_pdf_text(file_path: str | Path) -> tuple[str, dict]:
     """Extract text from a PDF file. Returns (full_text, metadata).
@@ -17,11 +20,20 @@ def extract_pdf_text(file_path: str | Path) -> tuple[str, dict]:
     doc = fitz.open(str(file_path))
     meta = doc.metadata or {}
 
+    if doc.page_count > MAX_PAGES:
+        doc.close()
+        raise ValueError(f"PDF has {doc.page_count} pages (max {MAX_PAGES})")
+
     pages = []
+    total_len = 0
     for page in doc:
         text = page.get_text()
         if text.strip():
             pages.append(text.strip())
+            total_len += len(text)
+            if total_len > MAX_TEXT_BYTES:
+                doc.close()
+                raise ValueError(f"PDF text exceeds {MAX_TEXT_BYTES // (1024 * 1024)} MB limit")
 
     doc.close()
 
